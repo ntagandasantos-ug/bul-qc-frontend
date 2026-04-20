@@ -1,53 +1,53 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar          from '../components/Navbar';
+import PageFooter      from '../components/PageFooter';
 import SampleCard      from '../components/SampleCard';
-import StatCard        from '../components/StatCard';
 import LoadingSpinner  from '../components/LoadingSpinner';
+import { useAuth }     from '../context/AuthContext';
 import { samplesService }  from '../services/samples.service';
 import { supabase }        from '../services/supabase';
-import { Search, PlusCircle, RefreshCw, Filter } from 'lucide-react';
+import { format }          from 'date-fns';
 
 export default function DashboardPage() {
   const [samples,      setSamples]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter,   setDateFilter]   = useState(
+    format(new Date(), 'yyyy-MM-dd')  // default = today
+  );
+  const [showAll,      setShowAll]      = useState(false);
   const [refreshing,   setRefreshing]   = useState(false);
+  const { isDeptHead } = useAuth();
   const navigate = useNavigate();
 
-  const loadSamples = useCallback(async (quiet = false) => {
+  const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else setRefreshing(true);
     try {
       const filters = {};
       if (statusFilter !== 'all') filters.status = statusFilter;
+      // When showAll is false, filter by selected date
+      if (!showAll) filters.date = dateFilter;
       const data = await samplesService.getSamples(filters);
       setSamples(data.samples || []);
-    } catch (err) {
-      console.error('Failed to load samples:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [statusFilter]);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, [statusFilter, dateFilter, showAll]);
 
-  // Initial load
-  useEffect(() => { loadSamples(); }, [loadSamples]);
+  useEffect(() => { load(); }, [load]);
 
-  // Real-time updates
   useEffect(() => {
     const sub = supabase
-      .channel('dashboard_samples')
+      .channel('dash_samples')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'registered_samples' },
-        () => loadSamples(true)
-      )
-      .subscribe();
+        () => load(true)
+      ).subscribe();
     return () => sub.unsubscribe();
-  }, [loadSamples]);
+  }, [load]);
 
-  // Filter by search
   const filtered = samples.filter(s => {
     const q = search.toLowerCase();
     return (
@@ -58,116 +58,198 @@ export default function DashboardPage() {
     );
   });
 
-  // Stats counts
+  // Stats
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const todaySamples = samples.filter(s =>
+    s.registered_at?.startsWith(today)
+  );
   const counts = {
-    total      : samples.length,
-    pending    : samples.filter(s => s.status === 'pending').length,
+    all:         samples.length,
+    today:       todaySamples.length,
+    pending:     samples.filter(s => s.status === 'pending').length,
     in_progress: samples.filter(s => s.status === 'in_progress').length,
-    complete   : samples.filter(s => s.status === 'complete').length,
+    complete:    samples.filter(s => s.status === 'complete').length,
   };
 
-  const todayLabel = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const statCard = (label, value, color, icon) => (
+    <div key={label} style={{
+      background: '#fff', borderRadius: '14px',
+      border: `2px solid ${color}22`,
+      padding: '12px', textAlign: 'center',
+      flex: '1',
+    }}>
+      <div style={{ fontSize: '22px', marginBottom: '2px' }}>{icon}</div>
+      <div style={{ fontSize: '22px', fontWeight: '800', color }}>{value}</div>
+      <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: '600' }}>{label}</div>
+    </div>
+  );
+
+  const inputSt = {
+    border: '1.5px solid #E9D5FF', borderRadius: '10px',
+    padding: '9px 12px', fontSize: '13px',
+    fontFamily: 'inherit', background: '#fff',
+    color: '#111827', cursor: 'text',
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ minHeight: '100vh', background: '#FAF5FF', paddingBottom: '60px' }}>
       <Navbar />
 
-      <main className="max-w-3xl mx-auto px-4 py-5">
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
 
-        {/* Date header */}
-        <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-900">Sample Tracking</h2>
-          <p className="text-xs text-gray-400">{todayLabel}</p>
+        {/* Page title */}
+        <div style={{ marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '800',
+                       color: '#1F2937', margin: '0 0 2px' }}>
+            Sample Tracking
+          </h2>
+          <p style={{ fontSize: '12px', color: '#9CA3AF', margin: 0 }}>
+            {format(new Date(), 'EEEE, dd MMMM yyyy')}
+          </p>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-4 gap-2 mb-5">
-          <StatCard label="Total"       value={counts.total}       color="blue"   icon="🧪" />
-          <StatCard label="Pending"     value={counts.pending}     color="gray"   icon="⏳" />
-          <StatCard label="In Progress" value={counts.in_progress} color="orange" icon="🔬" />
-          <StatCard label="Complete"    value={counts.complete}    color="green"  icon="✅" />
+        {/* Stats Row */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px',
+                      flexWrap: 'wrap' }}>
+          {statCard('All Samples',  counts.all,         '#7C3AED', '🧪')}
+          {statCard('Today',        counts.today,        '#6B21A8', '📅')}
+          {statCard('Pending',      counts.pending,      '#6B7280', '⏳')}
+          {statCard('In Progress',  counts.in_progress,  '#EA580C', '🔬')}
+          {statCard('Complete',     counts.complete,     '#16A34A', '✅')}
         </div>
 
-        {/* Search + filter + add button */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2
-                                         text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, number, type..."
-              className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-xl
-                         text-sm bg-white focus:border-bul-blue"
-            />
-          </div>
+        {/* Controls Row */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap',
+                      marginBottom: '16px', alignItems: 'center' }}>
 
+          {/* Search */}
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 Search samples..."
+            style={{ ...inputSt, flex: '1', minWidth: '160px', cursor: 'text' }}
+          />
+
+          {/* Date filter */}
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={e => { setDateFilter(e.target.value); setShowAll(false); }}
+            style={{ ...inputSt, cursor: 'pointer' }}
+          />
+
+          {/* Show all toggle */}
+          <button
+            onClick={() => setShowAll(!showAll)}
+            style={{
+              padding: '9px 14px', borderRadius: '10px',
+              border: `1.5px solid ${showAll ? '#7C3AED' : '#E9D5FF'}`,
+              background: showAll ? '#7C3AED' : '#fff',
+              color: showAll ? '#fff' : '#7C3AED',
+              fontSize: '12px', fontWeight: '600',
+              cursor: 'pointer', fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {showAll ? '📅 Filtered' : '📋 All Dates'}
+          </button>
+
+          {/* Status filter */}
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-                       bg-white focus:border-bul-blue text-gray-700"
+            style={{ ...inputSt, cursor: 'pointer' }}
           >
-            <option value="all">All</option>
+            <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="in_progress">In Progress</option>
             <option value="complete">Complete</option>
           </select>
 
+          {/* Refresh */}
           <button
-            onClick={() => loadSamples(true)}
+            onClick={() => load(true)}
             disabled={refreshing}
-            className="p-2.5 border border-gray-300 rounded-xl bg-white
-                       hover:bg-gray-50 text-gray-500"
+            style={{
+              padding: '9px 12px', borderRadius: '10px',
+              border: '1.5px solid #E9D5FF', background: '#fff',
+              cursor: 'pointer', fontSize: '16px',
+            }}
           >
-            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? '⏳' : '🔄'}
           </button>
 
-          <button
-            onClick={() => navigate('/register-sample')}
-            className="flex items-center gap-1.5 bg-bul-blue text-white
-                       px-4 py-2.5 rounded-xl text-sm font-semibold
-                       hover:bg-blue-800 whitespace-nowrap"
-          >
-            <PlusCircle size={15} />
-            <span className="hidden sm:inline">Register</span>
-          </button>
+          {/* Register button */}
+          {!isDeptHead && (
+            <button
+              onClick={() => navigate('/register-sample')}
+              style={{
+                padding: '9px 16px', borderRadius: '10px',
+                background: 'linear-gradient(135deg, #6B21A8, #7C3AED)',
+                color: '#fff', border: 'none',
+                fontSize: '13px', fontWeight: '700',
+                cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(124,58,237,0.3)',
+              }}
+            >
+              + Register Sample
+            </button>
+          )}
         </div>
+
+        {/* Date label */}
+        <p style={{ fontSize: '12px', color: '#7C3AED', fontWeight: '600',
+                    marginBottom: '12px' }}>
+          {showAll
+            ? `Showing all ${filtered.length} samples`
+            : `Showing ${filtered.length} sample(s) for ${
+                dateFilter === today ? 'today' : dateFilter
+              }`}
+        </p>
 
         {/* Sample list */}
         {loading ? (
           <LoadingSpinner text="Loading samples..." />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-3">🧪</div>
-            <p className="text-gray-500 font-medium">No samples found</p>
-            <p className="text-gray-400 text-sm mt-1">
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🧪</div>
+            <p style={{ color: '#6B7280', fontWeight: '600', fontSize: '15px' }}>
+              No samples found
+            </p>
+            <p style={{ color: '#9CA3AF', fontSize: '13px', marginTop: '4px' }}>
               {samples.length === 0
                 ? 'Register the first sample of this shift'
-                : 'Try a different search or filter'}
+                : 'Try a different search, date, or status filter'}
             </p>
-            <button
-              onClick={() => navigate('/register-sample')}
-              className="mt-4 bg-bul-blue text-white px-6 py-2.5 rounded-xl
-                         text-sm font-semibold hover:bg-blue-800"
-            >
-              + Register Sample
-            </button>
+            {!isDeptHead && (
+              <button
+                onClick={() => navigate('/register-sample')}
+                style={{
+                  marginTop: '16px', padding: '12px 24px',
+                  background: '#7C3AED', color: '#fff',
+                  border: 'none', borderRadius: '12px',
+                  fontSize: '14px', fontWeight: '600',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                + Register Sample
+              </button>
+            )}
           </div>
         ) : (
-          <div className="space-y-2">
-            {filtered.map(sample => (
-              <SampleCard key={sample.id} sample={sample} />
-            ))}
-            <p className="text-center text-xs text-gray-400 pt-2">
-              Showing {filtered.length} of {samples.length} samples
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {filtered.map(s => <SampleCard key={s.id} sample={s} />)}
+            <p style={{ textAlign: 'center', fontSize: '11px',
+                        color: '#9CA3AF', paddingTop: '8px' }}>
+              {filtered.length} of {samples.length} samples shown
             </p>
           </div>
         )}
-      </main>
+      </div>
+
+      <PageFooter />
     </div>
   );
 }
