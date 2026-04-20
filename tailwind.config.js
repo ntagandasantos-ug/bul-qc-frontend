@@ -4,27 +4,19 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'bul-blue':   '#003087',
-        'bul-gold':   '#FFB81C',
-        'bul-green':  '#28A745',
-        'bul-orange': '#FD7E14',
-        'bul-red':    '#DC3545',
-        'bul-gray':   '#6C757D',
-      },
-      animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'slide-in':   'slideIn 0.3s ease-out',
-        'fade-in':    'fadeIn 0.4s ease-out',
-      },
-      keyframes: {
-        slideIn: {
-          '0%':   { transform: 'translateY(-10px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)',     opacity: '1' },
-        },
-        fadeIn: {
-          '0%':   { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
+        // Primary purple theme
+        'bul-primary':  '#6B21A8',   // deep purple
+        'bul-purple':   '#7C3AED',   // vibrant purple
+        'bul-purple2':  '#9333EA',   // lighter purple
+        'bul-gold':     '#FFB81C',   // BUL gold accent
+        'bul-blue':     '#003087',   // kept for data colours
+        // Status colours
+        'bul-green':    '#16A34A',
+        'bul-orange':   '#EA580C',
+        'bul-red':      '#DC2626',
+        'bul-gray':     '#6B7280',
+        // Backgrounds
+        'bul-bg':       '#FAF5FF',   // very light purple tint
       },
     },
   },

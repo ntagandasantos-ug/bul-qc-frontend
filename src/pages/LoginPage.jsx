@@ -1,214 +1,278 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth }       from '../context/AuthContext';
-import { authService }   from '../services/auth.service';
-import api               from '../services/api';
-import { toast }         from 'react-toastify';
+import { useAuth }     from '../context/AuthContext';
+import { authService } from '../services/auth.service';
+import api             from '../services/api';
+import { toast }       from 'react-toastify';
 
-// ── Shared inline styles (no Tailwind animations) ─────────
-const card = {
-  background: '#ffffff', borderRadius: '20px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-  overflow: 'hidden', width: '100%', maxWidth: '380px',
-};
-const headerStrip = {
-  background: '#003087', padding: '28px 24px',
-  textAlign: 'center',
-};
-const iconBox = {
-  width: '64px', height: '64px', background: '#FFB81C',
-  borderRadius: '16px', display: 'flex', alignItems: 'center',
-  justifyContent: 'center', margin: '0 auto 12px',
-  fontSize: '28px',
-};
-const inputSt = {
-  width: '100%', border: '1.5px solid #D1D5DB',
-  borderRadius: '10px', padding: '11px 14px',
-  fontSize: '14px', color: '#111827',
-  backgroundColor: '#fff', fontFamily: 'inherit',
-  boxSizing: 'border-box', cursor: 'text',
-  pointerEvents: 'auto',
-};
-const btnPrimary = (disabled) => ({
-  width: '100%', background: disabled ? '#93A3B8' : '#003087',
-  color: '#fff', border: 'none', borderRadius: '12px',
-  padding: '13px', fontSize: '15px', fontWeight: '600',
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  fontFamily: 'inherit', marginTop: '6px',
-  pointerEvents: 'auto',
-});
-const btnLink = {
-  background: 'none', border: 'none', color: '#003087',
-  fontSize: '13px', cursor: 'pointer', textDecoration: 'underline',
-  fontFamily: 'inherit', padding: 0,
-  pointerEvents: 'auto',
-};
-const fieldWrap = { marginBottom: '14px' };
-const labelSt = {
-  display: 'block', fontSize: '12px',
-  fontWeight: '600', color: '#374151', marginBottom: '5px',
-};
-const errBox = {
-  background: '#FEF2F2', border: '1.5px solid #FECACA',
-  borderRadius: '10px', padding: '10px 14px',
-  color: '#DC2626', fontSize: '13px', marginBottom: '14px',
-};
-
-// ════════════════════════════════════════════════════════════
 export default function LoginPage() {
-  const { login, user }    = useAuth();
-  const navigate           = useNavigate();
-  const [searchParams]     = useSearchParams();
+  const { login, user }  = useAuth();
+  const navigate         = useNavigate();
+  const [params]         = useSearchParams();
 
-  // Which panel is showing
-  // 'login' | 'forgot' | 'change_username' | 'change_password'
-  const [panel, setPanel]       = useState('login');
-  const [error, setError]       = useState('');
-  const [busy,  setBusy]        = useState(false);
-  const [okMsg, setOkMsg]       = useState('');
+  const [panel,      setPanel]      = useState('login');
+  const [error,      setError]      = useState('');
+  const [okMsg,      setOkMsg]      = useState('');
+  const [busy,       setBusy]       = useState(false);
 
-  // Login fields
-  const [username,  setUsername]  = useState('');
-  const [password,  setPassword]  = useState('');
-  const [signingAs, setSigningAs] = useState('');
-  const [showPass,  setShowPass]  = useState(false);
+  // Login
+  const [username,   setUsername]   = useState('');
+  const [password,   setPassword]   = useState('');
+  const [signingAs,  setSigningAs]  = useState('');
+  const [showPw,     setShowPw]     = useState(false);
 
-  // Forgot password fields
-  const [fpUsername,    setFpUsername]    = useState('');
-  const [fpOldPassword, setFpOldPassword] = useState('');
-  const [fpNewPassword, setFpNewPassword] = useState('');
-  const [fpConfirm,     setFpConfirm]     = useState('');
+  // Change password
+  const [cpUser,     setCpUser]     = useState('');
+  const [cpOld,      setCpOld]      = useState('');
+  const [cpNew,      setCpNew]      = useState('');
+  const [cpConfirm,  setCpConfirm]  = useState('');
+  const [cpCode,     setCpCode]     = useState('');
+  const [cpStep,     setCpStep]     = useState(1); // 1=form, 2=verify email code
 
-  // Change username fields
-  const [cuUsername,    setCuUsername]    = useState('');
-  const [cuPassword,    setCuPassword]    = useState('');
-  const [cuNewUsername, setCuNewUsername] = useState('');
+  // Change username
+  const [cuUser,     setCuUser]     = useState('');
+  const [cuPw,       setCuPw]       = useState('');
+  const [cuNew,      setCuNew]      = useState('');
+  const [cuCode,     setCuCode]     = useState('');
+  const [cuStep,     setCuStep]     = useState(1);
 
-  // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      const dest = user.roles?.name === 'Department Head' ||
-                   user.roles?.name === 'Department Assistant'
-        ? '/dashboard/dept' : '/dashboard';
-      navigate(dest, { replace: true });
+      navigate(
+        user.roles?.name === 'Department Head' ||
+        user.roles?.name === 'Department Assistant'
+          ? '/dashboard/dept' : '/dashboard',
+        { replace: true }
+      );
     }
   }, [user]);
 
   useEffect(() => {
-    if (searchParams.get('reason') === 'expired') {
+    if (params.get('reason') === 'expired')
       setError('Your 12-hour shift session expired. Please login again.');
-    }
   }, []);
+
+  const reset = () => { setError(''); setOkMsg(''); };
 
   // ── LOGIN ─────────────────────────────────────────────────
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!username.trim() || !password.trim()) {
-      setError('Please enter your username and password.'); return;
+    e.preventDefault(); reset();
+    if (!username || !password) {
+      setError('Enter your username and password.'); return;
     }
     setBusy(true);
     try {
-      const data = await login(username, password, signingAs || undefined);
-      const role = data.user.roles?.name;
+      const d = await login(username, password, signingAs || undefined);
       navigate(
-        role === 'Department Head' || role === 'Department Assistant'
+        d.user.roles?.name === 'Department Head' ||
+        d.user.roles?.name === 'Department Assistant'
           ? '/dashboard/dept' : '/dashboard',
         { replace: true }
       );
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Check your credentials.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
-  // ── CHANGE PASSWORD (knows old password) ─────────────────
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    setError(''); setOkMsg('');
-    if (!fpUsername.trim() || !fpOldPassword.trim()) {
-      setError('Enter your username and current password.'); return;
-    }
-    if (fpNewPassword.length < 8) {
-      setError('New password must be at least 8 characters.'); return;
-    }
-    if (fpNewPassword !== fpConfirm) {
-      setError('New passwords do not match.'); return;
-    }
+  // ── REQUEST EMAIL CODE (Change Password step 1) ───────────
+  const handleCpRequest = async (e) => {
+    e.preventDefault(); reset();
+    if (!cpUser || !cpOld) { setError('Enter username and current password.'); return; }
+    if (cpNew.length < 8)  { setError('New password must be 8+ characters.'); return; }
+    if (cpNew !== cpConfirm){ setError('New passwords do not match.'); return; }
     setBusy(true);
     try {
-      // Login first to get a token, then change password
-      const loginData = await authService.login(fpUsername, fpOldPassword);
-      // Temporarily set auth header for this request
-      const res = await api.put('/auth/change-password',
-        { oldPassword: fpOldPassword, newPassword: fpNewPassword },
+      await api.post('/auth/request-change-code', {
+        username  : cpUser,
+        password  : cpOld,
+        changeType: 'password',
+      });
+      setOkMsg('✅ A verification code has been sent to your registered email. Enter it below.');
+      setCpStep(2);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Request failed. Check your credentials.');
+    } finally { setBusy(false); }
+  };
+
+  // ── CONFIRM CODE (Change Password step 2) ─────────────────
+  const handleCpConfirm = async (e) => {
+    e.preventDefault(); reset();
+    if (!cpCode) { setError('Enter the verification code from your email.'); return; }
+    setBusy(true);
+    try {
+      const loginData = await authService.login(cpUser, cpOld);
+      await api.put('/auth/change-password',
+        { oldPassword: cpOld, newPassword: cpNew, verifyCode: cpCode },
         { headers: { Authorization: `Bearer ${loginData.token}` } }
       );
-      // Logout the temp session
       await api.post('/auth/logout', {},
         { headers: { Authorization: `Bearer ${loginData.token}` } }
       );
-      setOkMsg('✅ Password changed successfully! You can now login with your new password.');
-      setFpUsername(''); setFpOldPassword('');
-      setFpNewPassword(''); setFpConfirm('');
+      setOkMsg('✅ Password changed! Login with your new password.');
+      setCpStep(1);
+      setCpUser(''); setCpOld(''); setCpNew(''); setCpConfirm(''); setCpCode('');
       setTimeout(() => { setPanel('login'); setOkMsg(''); }, 3000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to change password. Check your current password.');
-    } finally {
-      setBusy(false);
-    }
+      setError(err.response?.data?.error || 'Wrong code or request expired.');
+    } finally { setBusy(false); }
   };
 
-  // ── CHANGE USERNAME ───────────────────────────────────────
-  const handleChangeUsername = async (e) => {
-    e.preventDefault();
-    setError(''); setOkMsg('');
-    if (!cuUsername.trim() || !cuPassword.trim() || !cuNewUsername.trim()) {
+  // ── REQUEST EMAIL CODE (Change Username step 1) ───────────
+  const handleCuRequest = async (e) => {
+    e.preventDefault(); reset();
+    if (!cuUser || !cuPw || !cuNew) {
       setError('All fields are required.'); return;
     }
-    if (cuNewUsername.includes(' ')) {
-      setError('Username cannot contain spaces.'); return;
-    }
+    if (cuNew.includes(' ')) { setError('Username cannot have spaces.'); return; }
     setBusy(true);
     try {
-      const loginData = await authService.login(cuUsername, cuPassword);
+      await api.post('/auth/request-change-code', {
+        username  : cuUser,
+        password  : cuPw,
+        changeType: 'username',
+      });
+      setOkMsg('✅ A verification code has been sent to your registered email.');
+      setCuStep(2);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Request failed.');
+    } finally { setBusy(false); }
+  };
+
+  // ── CONFIRM CODE (Change Username step 2) ─────────────────
+  const handleCuConfirm = async (e) => {
+    e.preventDefault(); reset();
+    if (!cuCode) { setError('Enter the verification code.'); return; }
+    setBusy(true);
+    try {
+      const loginData = await authService.login(cuUser, cuPw);
       await api.put('/auth/change-username',
-        { newUsername: cuNewUsername.trim().toLowerCase() },
+        { newUsername: cuNew, verifyCode: cuCode },
         { headers: { Authorization: `Bearer ${loginData.token}` } }
       );
       await api.post('/auth/logout', {},
         { headers: { Authorization: `Bearer ${loginData.token}` } }
       );
-      setOkMsg(`✅ Username changed to "${cuNewUsername}". Please login with your new username.`);
-      setCuUsername(''); setCuPassword(''); setCuNewUsername('');
+      setOkMsg(`✅ Username changed to "${cuNew}". Login with your new username.`);
+      setCuStep(1);
+      setCuUser(''); setCuPw(''); setCuNew(''); setCuCode('');
       setTimeout(() => { setPanel('login'); setOkMsg(''); }, 3000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to change username. Check your password.');
-    } finally {
-      setBusy(false);
-    }
+      setError(err.response?.data?.error || 'Wrong code or request expired.');
+    } finally { setBusy(false); }
   };
 
-  const resetErrors = () => { setError(''); setOkMsg(''); };
+  // ── STYLES ────────────────────────────────────────────────
+  const inputSt = {
+    width: '100%', border: '1.5px solid #D1D5DB',
+    borderRadius: '10px', padding: '11px 14px',
+    fontSize: '14px', color: '#111827',
+    backgroundColor: '#fff', fontFamily: 'inherit',
+    boxSizing: 'border-box', cursor: 'text',
+  };
+  const btnPrimary = (dis) => ({
+    width: '100%', background: dis ? '#A78BFA' : '#7C3AED',
+    color: '#fff', border: 'none', borderRadius: '12px',
+    padding: '13px', fontSize: '15px', fontWeight: '600',
+    cursor: dis ? 'not-allowed' : 'pointer',
+    fontFamily: 'inherit', marginTop: '6px',
+  });
+  const lbl = {
+    display: 'block', fontSize: '12px',
+    fontWeight: '600', color: '#374151', marginBottom: '5px',
+  };
+  const fld = { marginBottom: '14px' };
+  const errBox = {
+    background: '#FEF2F2', border: '1.5px solid #FECACA',
+    borderRadius: '10px', padding: '10px 14px',
+    color: '#DC2626', fontSize: '13px', marginBottom: '14px',
+  };
+  const okBox = {
+    ...errBox,
+    background: '#F0FDF4', borderColor: '#86EFAC', color: '#166534',
+  };
 
-  // ── RENDER ────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #003087 0%, #1e40af 50%, #1e3a8a 100%)',
+      background: '#ffffff',
       display: 'flex', alignItems: 'center',
       justifyContent: 'center', padding: '20px',
+      position: 'relative', overflow: 'hidden',
     }}>
-      <div style={card}>
 
-        {/* Header */}
-        <div style={headerStrip}>
-          <div style={iconBox}>🧪</div>
-          <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: '700', margin: '0 0 4px' }}>
+      {/* ── Watermark ── */}
+      <div style={{
+        position: 'fixed',
+        top: '50%', left: '50%',
+        transform: 'translate(-50%,-50%) rotate(-30deg)',
+        fontSize: '18px', fontWeight: '700',
+        color: 'rgba(220, 38, 38, 0.06)',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        zIndex: 0,
+        letterSpacing: '4px',
+      }}>
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div key={i} style={{ marginBottom: '40px' }}>
+            Designed by SantosInfographics &nbsp;&nbsp;&nbsp;
+            Designed by SantosInfographics &nbsp;&nbsp;&nbsp;
+            Designed by SantosInfographics
+          </div>
+        ))}
+      </div>
+
+      {/* ── SantosInfographics logo top-right ── */}
+      <div style={{
+        position: 'fixed', top: '16px', right: '20px',
+        fontSize: '11px', color: '#DC2626',
+        fontWeight: '700', letterSpacing: '1px',
+        zIndex: 10, textAlign: 'right',
+      }}>
+        <div style={{
+          width: '36px', height: '36px',
+          background: '#DC2626', borderRadius: '50%',
+          color: '#fff', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          fontWeight: '900', fontSize: '13px',
+          marginBottom: '2px', marginLeft: 'auto',
+        }}>
+          SI
+        </div>
+        <div>SantosInfographics</div>
+      </div>
+
+      {/* ── Login Card ── */}
+      <div style={{
+        background: '#fff', borderRadius: '20px',
+        boxShadow: '0 20px 60px rgba(124,58,237,0.15)',
+        border: '1px solid #EDE9FE',
+        overflow: 'hidden', width: '100%', maxWidth: '390px',
+        position: 'relative', zIndex: 1,
+      }}>
+
+        {/* Purple header */}
+        <div style={{
+          background: 'linear-gradient(135deg, #6B21A8 0%, #7C3AED 100%)',
+          padding: '28px 24px', textAlign: 'center',
+        }}>
+          <div style={{
+            width: '64px', height: '64px',
+            background: '#FFB81C', borderRadius: '16px',
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'center', margin: '0 auto 12px',
+            fontSize: '30px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}>
+            🧪
+          </div>
+          <h1 style={{
+            color: '#fff', fontSize: '20px',
+            fontWeight: '800', margin: '0 0 4px',
+          }}>
             BUL QC App
           </h1>
-          <p style={{ color: '#93C5FD', fontSize: '12px', margin: 0 }}>
+          <p style={{ color: '#DDD6FE', fontSize: '12px', margin: 0 }}>
             Laboratory Information Management System
           </p>
         </div>
@@ -216,10 +280,10 @@ export default function LoginPage() {
         {/* Body */}
         <div style={{ padding: '24px' }}>
 
-          {/* Tab switcher */}
+          {/* Tabs */}
           <div style={{
             display: 'flex', borderRadius: '10px',
-            overflow: 'hidden', border: '1.5px solid #E5E7EB',
+            overflow: 'hidden', border: '1.5px solid #EDE9FE',
             marginBottom: '20px',
           }}>
             {[
@@ -227,18 +291,16 @@ export default function LoginPage() {
               { key: 'change_password', label: 'Change Password' },
               { key: 'change_username', label: 'Change Username' },
             ].map(t => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => { setPanel(t.key); resetErrors(); }}
+              <button key={t.key} type="button"
+                onClick={() => { setPanel(t.key); reset();
+                  setCpStep(1); setCuStep(1); }}
                 style={{
                   flex: 1, padding: '9px 4px',
-                  fontSize: '11px', fontWeight: '600',
+                  fontSize: '10px', fontWeight: '600',
                   border: 'none', cursor: 'pointer',
                   fontFamily: 'inherit',
-                  background: panel === t.key ? '#003087' : '#F9FAFB',
+                  background: panel === t.key ? '#7C3AED' : '#FAFAFA',
                   color:      panel === t.key ? '#fff'    : '#6B7280',
-                  pointerEvents: 'auto',
                 }}
               >
                 {t.label}
@@ -246,177 +308,169 @@ export default function LoginPage() {
             ))}
           </div>
 
-          {/* Error / Success messages */}
-          {error  && <div style={errBox}>{error}</div>}
-          {okMsg  && (
-            <div style={{ ...errBox,
-              background: '#F0FDF4', borderColor: '#86EFAC', color: '#166534' }}>
-              {okMsg}
-            </div>
-          )}
+          {error && <div style={errBox}>⚠️ {error}</div>}
+          {okMsg  && <div style={okBox}>{okMsg}</div>}
 
-          {/* ── PANEL: LOGIN ── */}
+          {/* ── LOGIN PANEL ── */}
           {panel === 'login' && (
             <form onSubmit={handleLogin}>
-              <div style={fieldWrap}>
-                <label style={labelSt}>Supervisor Username</label>
-                <input
-                  type="text"
-                  value={username}
+              <div style={fld}>
+                <label style={lbl}>Supervisor Username</label>
+                <input type="text" value={username}
                   onChange={e => setUsername(e.target.value)}
-                  style={inputSt}
-                  placeholder="e.g. shift_magezi"
-                  autoComplete="username"
-                />
+                  style={inputSt} placeholder="e.g. shift_magezi"
+                  autoComplete="username" />
               </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Password</label>
+              <div style={fld}>
+                <label style={lbl}>Password</label>
                 <div style={{ position: 'relative' }}>
                   <input
-                    type={showPass ? 'text' : 'password'}
+                    type={showPw ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    style={{ ...inputSt, paddingRight: '44px' }}
+                    style={{ ...inputSt, paddingRight: '42px' }}
                     placeholder="••••••••"
-                    autoComplete="current-password"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
+                  <button type="button"
+                    onClick={() => setShowPw(!showPw)}
                     style={{
                       position: 'absolute', right: '12px',
                       top: '50%', transform: 'translateY(-50%)',
                       background: 'none', border: 'none',
                       cursor: 'pointer', fontSize: '16px',
-                      pointerEvents: 'auto',
-                    }}
-                  >
-                    {showPass ? '🙈' : '👁️'}
+                    }}>
+                    {showPw ? '🙈' : '👁️'}
                   </button>
                 </div>
               </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Signing in as (Analyst / Sampler)</label>
-                <input
-                  type="text"
-                  value={signingAs}
+              <div style={fld}>
+                <label style={lbl}>Signing in as (Analyst / Sampler)</label>
+                <input type="text" value={signingAs}
                   onChange={e => setSigningAs(e.target.value)}
                   style={inputSt}
-                  placeholder="Your full name — leave blank if you are the supervisor"
-                  autoComplete="off"
-                />
+                  placeholder="Your full name — leave blank if supervisor"
+                  autoComplete="off" />
                 <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '4px' }}>
-                  Analysts and Samplers type their name here for the audit trail.
-                  Supervisors can leave this blank.
+                  Analysts and Samplers type their name here for audit trail.
                 </p>
               </div>
-
               <button type="submit" disabled={busy} style={btnPrimary(busy)}>
                 {busy ? 'Logging in...' : 'Login to BUL QC'}
               </button>
-
               <p style={{ textAlign: 'center', fontSize: '11px',
-                          color: '#9CA3AF', marginTop: '12px' }}>
+                          color: '#9CA3AF', marginTop: '10px' }}>
                 Sessions expire automatically after 12 hours
               </p>
             </form>
           )}
 
-          {/* ── PANEL: CHANGE PASSWORD ── */}
-          {panel === 'change_password' && (
-            <form onSubmit={handleChangePassword}>
-              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>
-                Enter your current credentials and choose a new password.
+          {/* ── CHANGE PASSWORD PANEL ── */}
+          {panel === 'change_password' && cpStep === 1 && (
+            <form onSubmit={handleCpRequest}>
+              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px' }}>
+                A verification code will be sent to your registered email address.
               </p>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Your Username</label>
-                <input type="text" value={fpUsername}
-                  onChange={e => setFpUsername(e.target.value)}
-                  style={inputSt} placeholder="e.g. shift_magezi" autoComplete="off" />
-              </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Current Password</label>
-                <input type="password" value={fpOldPassword}
-                  onChange={e => setFpOldPassword(e.target.value)}
-                  style={inputSt} placeholder="Your current password" />
-              </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>New Password</label>
-                <input type="password" value={fpNewPassword}
-                  onChange={e => setFpNewPassword(e.target.value)}
-                  style={inputSt} placeholder="Min. 8 characters" />
-              </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Confirm New Password</label>
-                <input type="password" value={fpConfirm}
-                  onChange={e => setFpConfirm(e.target.value)}
-                  style={inputSt} placeholder="Repeat new password" />
-              </div>
-
+              {[
+                ['Your Username',       cpUser,    setCpUser,    'text',    'e.g. shift_magezi'],
+                ['Current Password',    cpOld,     setCpOld,     'password','••••••••'],
+                ['New Password',        cpNew,     setCpNew,     'password','Min 8 characters'],
+                ['Confirm New Password',cpConfirm, setCpConfirm, 'password','Repeat new password'],
+              ].map(([label, val, set, type, ph]) => (
+                <div key={label} style={fld}>
+                  <label style={lbl}>{label}</label>
+                  <input type={type} value={val}
+                    onChange={e => set(e.target.value)}
+                    style={inputSt} placeholder={ph} />
+                </div>
+              ))}
               <button type="submit" disabled={busy} style={btnPrimary(busy)}>
-                {busy ? 'Saving...' : 'Change My Password'}
+                {busy ? 'Sending Code...' : 'Send Verification Code to Email'}
               </button>
-
-              <div style={{ textAlign: 'center', marginTop: '12px' }}>
-                <button type="button" style={btnLink}
-                  onClick={() => { setPanel('login'); resetErrors(); }}>
-                  ← Back to Login
-                </button>
-              </div>
             </form>
           )}
 
-          {/* ── PANEL: CHANGE USERNAME ── */}
-          {panel === 'change_username' && (
-            <form onSubmit={handleChangeUsername}>
-              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>
-                Enter your current login details and your desired new username.
+          {panel === 'change_password' && cpStep === 2 && (
+            <form onSubmit={handleCpConfirm}>
+              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px' }}>
+                Enter the 6-digit code sent to your email:
               </p>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Current Username</label>
-                <input type="text" value={cuUsername}
-                  onChange={e => setCuUsername(e.target.value)}
-                  style={inputSt} placeholder="e.g. shift_magezi" autoComplete="off" />
+              <div style={fld}>
+                <label style={lbl}>Verification Code</label>
+                <input type="text" value={cpCode}
+                  onChange={e => setCpCode(e.target.value)}
+                  style={{ ...inputSt, fontSize: '20px',
+                           letterSpacing: '8px', textAlign: 'center' }}
+                  placeholder="000000" maxLength={6} />
               </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>Current Password</label>
-                <input type="password" value={cuPassword}
-                  onChange={e => setCuPassword(e.target.value)}
-                  style={inputSt} placeholder="Your password" />
-              </div>
-
-              <div style={fieldWrap}>
-                <label style={labelSt}>New Username</label>
-                <input type="text" value={cuNewUsername}
-                  onChange={e => setCuNewUsername(e.target.value)}
-                  style={inputSt} placeholder="e.g. magezi_supervisor" autoComplete="off" />
-                <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '4px' }}>
-                  No spaces allowed. Lowercase recommended.
-                </p>
-              </div>
-
               <button type="submit" disabled={busy} style={btnPrimary(busy)}>
-                {busy ? 'Saving...' : 'Change My Username'}
+                {busy ? 'Verifying...' : 'Confirm & Change Password'}
               </button>
+              <button type="button" onClick={() => setCpStep(1)}
+                style={{ ...btnPrimary(false), background: '#6B7280', marginTop: '8px' }}>
+                ← Back
+              </button>
+            </form>
+          )}
 
-              <div style={{ textAlign: 'center', marginTop: '12px' }}>
-                <button type="button" style={btnLink}
-                  onClick={() => { setPanel('login'); resetErrors(); }}>
-                  ← Back to Login
-                </button>
+          {/* ── CHANGE USERNAME PANEL ── */}
+          {panel === 'change_username' && cuStep === 1 && (
+            <form onSubmit={handleCuRequest}>
+              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px' }}>
+                A verification code will be sent to your registered email address.
+              </p>
+              {[
+                ['Current Username', cuUser,  setCuUser, 'text',    'e.g. shift_magezi'],
+                ['Current Password', cuPw,    setCuPw,   'password','••••••••'],
+                ['New Username',     cuNew,   setCuNew,  'text',    'No spaces allowed'],
+              ].map(([label, val, set, type, ph]) => (
+                <div key={label} style={fld}>
+                  <label style={lbl}>{label}</label>
+                  <input type={type} value={val}
+                    onChange={e => set(e.target.value)}
+                    style={inputSt} placeholder={ph} autoComplete="off" />
+                </div>
+              ))}
+              <button type="submit" disabled={busy} style={btnPrimary(busy)}>
+                {busy ? 'Sending Code...' : 'Send Verification Code to Email'}
+              </button>
+            </form>
+          )}
+
+          {panel === 'change_username' && cuStep === 2 && (
+            <form onSubmit={handleCuConfirm}>
+              <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px' }}>
+                Enter the 6-digit code sent to your email:
+              </p>
+              <div style={fld}>
+                <label style={lbl}>Verification Code</label>
+                <input type="text" value={cuCode}
+                  onChange={e => setCuCode(e.target.value)}
+                  style={{ ...inputSt, fontSize: '20px',
+                           letterSpacing: '8px', textAlign: 'center' }}
+                  placeholder="000000" maxLength={6} />
               </div>
+              <button type="submit" disabled={busy} style={btnPrimary(busy)}>
+                {busy ? 'Verifying...' : 'Confirm & Change Username'}
+              </button>
+              <button type="button" onClick={() => setCuStep(1)}
+                style={{ ...btnPrimary(false), background: '#6B7280', marginTop: '8px' }}>
+                ← Back
+              </button>
             </form>
           )}
 
         </div>
+      </div>
+
+      {/* Footer watermark */}
+      <div style={{
+        position: 'fixed', bottom: '8px',
+        left: '50%', transform: 'translateX(-50%)',
+        fontSize: '11px', color: '#DC2626',
+        fontWeight: '600', zIndex: 1,
+        whiteSpace: 'nowrap',
+      }}>
+        Designed by SantosInfographics
       </div>
     </div>
   );

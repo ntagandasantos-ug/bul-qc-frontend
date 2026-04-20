@@ -2,58 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-/* ── Body ──────────────────────────────────────────────── */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f0f4f8;
+  background-color: #FAF5FF;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #003087; border-radius: 4px; }
+::-webkit-scrollbar       { width: 5px; }
+::-webkit-scrollbar-track { background: #F3E8FF; }
+::-webkit-scrollbar-thumb { background: #7C3AED; border-radius: 4px; }
 
-/* ── Toast colours ─────────────────────────────────────── */
-.Toastify__toast--success { background: #28A745 !important; }
-.Toastify__toast--error   { background: #DC3545 !important; }
-.Toastify__toast--warning { background: #FD7E14 !important; }
+.Toastify__toast--success { background: #16A34A !important; }
+.Toastify__toast--error   { background: #DC2626 !important; }
+.Toastify__toast--warning { background: #EA580C !important; }
 
-/* ── CRITICAL: Never block pointer events ──────────────── */
-/* This was the bug — remove any global pointer-events rule */
-input, select, textarea, button, a {
-  cursor: pointer;
-}
+input, select, textarea, button, a { cursor: pointer; }
 input[type="text"],
 input[type="password"],
 input[type="number"],
 input[type="email"],
-textarea {
-  cursor: text;
-}
+textarea { cursor: text; }
 
-/* ── Input & select base styles ────────────────────────── */
-input, select, textarea {
-  font-family: inherit;
-  font-size: 0.875rem;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid #003087;
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid #7C3AED;
   outline-offset: 1px;
 }
 
-/* ── Smooth button press ───────────────────────────────── */
-button:active:not(:disabled) {
-  transform: scale(0.98);
+/* Footer fixed at bottom */
+.page-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #6B21A8;
+  color: #E9D5FF;
+  font-size: 11px;
+  padding: 5px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 40;
 }
