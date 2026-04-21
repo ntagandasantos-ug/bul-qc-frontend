@@ -1,3 +1,5 @@
+import bulqc_logo from '../assets/bulqc_logo.png';
+
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -58,16 +60,17 @@ export default function Navbar() {
                      gap: '10px', cursor: 'pointer', userSelect: 'none' }}
           >
             {/* Logo circle */}
-            <div style={{
-              width: '36px', height: '36px',
-              background: '#FFB81C',
-              borderRadius: '10px',
-              display: 'flex', alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '18px',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-            }}>
-              🧪
+            <img
+     src={bulqc_logo}
+     alt="BUL QC"
+     style={{
+       width: '36px',
+       height: '36px',
+       borderRadius: '10px',
+       objectFit: 'cover',
+       boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+     }}
+   />
             </div>
             <div>
               <div style={{ fontWeight: '700', fontSize: '15px', lineHeight: '1' }}>

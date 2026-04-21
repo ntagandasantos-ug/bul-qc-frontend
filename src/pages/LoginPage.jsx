@@ -1,3 +1,5 @@
+import bulqc_logo from '../assets/bulqc_logo.png';
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth }     from '../context/AuthContext';
@@ -264,7 +266,16 @@ export default function LoginPage() {
             fontSize: '30px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
           }}>
-            🧪
+            <img
+     src={bulqc_logo}
+     alt="BUL QC"
+     style={{
+       width: '64px', height: '64px',
+       borderRadius: '16px',
+       objectFit: 'cover',
+       boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+     }}
+   />
           </div>
           <h1 style={{
             color: '#fff', fontSize: '20px',
