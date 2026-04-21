@@ -1,20 +1,39 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Navbar                from '../components/Navbar';
-import StatCard              from '../components/StatCard';
+import PageFooter            from '../components/PageFooter';
 import NotificationBell      from '../components/NotificationBell';
 import LoadingSpinner        from '../components/LoadingSpinner';
 import { useAuth }           from '../context/AuthContext';
 import { dashboardService }  from '../services/dashboard.service';
 import { supabase }          from '../services/supabase';
 import { format }            from 'date-fns';
-import { Activity }          from 'lucide-react';
 
 export default function DeptDashboardPage() {
-  const { user }     = useAuth();
-  const [results,    setResults]    = useState([]);
-  const [stats,      setStats]      = useState({});
-  const [loading,    setLoading]    = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const { user, logout }   = useAuth();
+  const [results,   setResults]   = useState([]);
+  const [stats,     setStats]     = useState({});
+  const [loading,   setLoading]   = useState(true);
+  const [clock,     setClock]     = useState(new Date());
+  const [lastUpd,   setLastUpd]   = useState(new Date());
+  const [dateFilter,setDateFilter]= useState(format(new Date(),'yyyy-MM-dd'));
+
+  // Live clock
+  useEffect(() => {
+    const t = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const playBeep = () => {
+    try {
+      const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 660; osc.type = 'sine';
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+      osc.start(); osc.stop(ctx.currentTime + 1.2);
+    } catch (e) {}
+  };
 
   const load = useCallback(async () => {
     try {
@@ -24,170 +43,380 @@ export default function DeptDashboardPage() {
       ]);
       setResults(r || []);
       setStats(s || {});
-      setLastUpdate(new Date());
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+      setLastUpd(new Date());
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Real-time result subscription
   useEffect(() => {
     const sub = supabase
-      .channel('dept_live_results')
+      .channel('dept_live')
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sample_test_assignments' },
-        () => { load(); playBeep_ifOutOfSpec(); }
-      )
-      .subscribe();
+        (payload) => {
+          load();
+          if (payload.new.result_status === 'fail_low' ||
+              payload.new.result_status === 'fail_high') {
+            playBeep();
+          }
+        }
+      ).subscribe();
     return () => sub.unsubscribe();
   }, [load]);
 
-  const playBeep_ifOutOfSpec = () => {
-    try {
-      const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = 660;
-      gain.gain.setValueAtTime(0.4, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1);
-      osc.start(); osc.stop(ctx.currentTime + 1);
-    } catch (e) {}
-  };
+  // Group results by sample
+  const sampleMap = {};
+  for (const r of results) {
+    const sId = r.registered_samples?.id;
+    if (!sId) continue;
+    if (!sampleMap[sId]) {
+      sampleMap[sId] = {
+        sample    : r.registered_samples,
+        parameters: [],
+      };
+    }
+    sampleMap[sId].parameters.push(r);
+  }
+  const sampleRows = Object.values(sampleMap);
 
-  const statusColor = (status) => ({
-    pass     : 'text-green-600 bg-green-50  border-green-200',
-    fail_low : 'text-red-600   bg-red-50    border-red-200',
-    fail_high: 'text-red-600   bg-red-50    border-red-200',
-    text_ok  : 'text-blue-600  bg-blue-50   border-blue-200',
-    ok       : 'text-green-600 bg-green-50  border-green-200',
-  })[status] || 'text-gray-600 bg-gray-50 border-gray-200';
+  // Filter by date
+  const filteredRows = sampleRows.filter(row =>
+    row.sample?.registered_at?.startsWith(dateFilter)
+  );
+
+  // Status colour for a cell value
+  const cellColor = (status) => ({
+    pass     : { bg: '#F0FDF4', text: '#16A34A', border: '#86EFAC' },
+    fail_low : { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA' },
+    fail_high: { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA' },
+    text_ok  : { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    ok       : { bg: '#F0FDF4', text: '#16A34A', border: '#86EFAC' },
+  })[status] || { bg: '#F9FAFB', text: '#374151', border: '#E5E7EB' };
+
+  // Is this entire row within spec?
+  const rowIsClean = (params) =>
+    params.every(p =>
+      !p.result_value ||
+      p.result_status === 'pass' ||
+      p.result_status === 'ok'  ||
+      p.result_status === 'text_ok'
+    );
+
+  // Avatar initials
+  const name    = user?.full_name || '?';
+  const initials= name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Custom header with notification bell */}
-      <nav className="bg-bul-blue text-white shadow-lg sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-base">
-              {user?.departments?.name || 'Department'} Dashboard
-            </h1>
-            <p className="text-blue-200 text-xs">
-              Live Results Feed — {user?.full_name}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 text-xs text-blue-200">
-              <Activity size={12} className="animate-pulse" />
-              Live
+    <div style={{ minHeight: '100vh', background: '#FAF5FF', paddingBottom: '60px' }}>
+
+      {/* ── Purple Header ── */}
+      <header style={{
+        background: 'linear-gradient(135deg, #6B21A8 0%, #7C3AED 100%)',
+        color: '#fff',
+        boxShadow: '0 2px 12px rgba(107,33,168,0.4)',
+        position: 'sticky', top: 0, zIndex: 50,
+        padding: '0 16px',
+      }}>
+        <div style={{
+          maxWidth: '1400px', margin: '0 auto',
+          height: '56px', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          {/* Left: Logo + dept name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', background: '#FFB81C',
+              borderRadius: '10px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '18px',
+            }}>
+              🧪
             </div>
+            <div>
+              <div style={{ fontWeight: '700', fontSize: '14px', lineHeight: '1' }}>
+                {user?.departments?.name || 'Department'} Dashboard
+              </div>
+              <div style={{ fontSize: '10px', color: '#DDD6FE' }}>
+                Live Results Feed
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Clock + notifications + avatar + logout */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+
+            {/* Live clock */}
+            <div style={{
+              fontSize: '13px', fontWeight: '700',
+              background: 'rgba(255,255,255,0.15)',
+              padding: '4px 12px', borderRadius: '20px',
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}>
+              🕐 {format(clock, 'HH:mm:ss')}
+            </div>
+
+            {/* Date filter */}
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={e => setDateFilter(e.target.value)}
+              style={{
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '8px', padding: '4px 8px',
+                fontSize: '12px', background: 'rgba(255,255,255,0.15)',
+                color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            />
+
+            {/* Notification bell */}
             <NotificationBell departmentId={user?.department_id} />
+
+            {/* Avatar */}
+            <div style={{
+              width: '32px', height: '32px',
+              borderRadius: '50%', background: '#FFB81C',
+              color: '#6B21A8', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              fontWeight: '800', fontSize: '12px',
+              border: '2px solid rgba(255,255,255,0.4)',
+            }}>
+              {initials}
+            </div>
+
+            {/* Logout button */}
+            <button
+              onClick={logout}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                color: '#fff', borderRadius: '8px',
+                padding: '5px 12px', fontSize: '12px',
+                fontWeight: '600', cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Logout
+            </button>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-5">
+      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px 16px' }}>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <StatCard label="Total Today"  value={stats.total       || 0} color="blue"   icon="🧪" />
-          <StatCard label="Pending"      value={stats.pending     || 0} color="gray"   icon="⏳" />
-          <StatCard label="In Progress"  value={stats.in_progress || 0} color="orange" icon="🔬" />
-          <StatCard label="Out of Spec"  value={stats.out_of_spec || 0} color="red"    icon="⚠️" />
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px',
+                      flexWrap: 'wrap' }}>
+          {[
+            { label: 'Total Today',  val: stats.total       || 0, icon: '🧪', col: '#7C3AED' },
+            { label: 'Pending',      val: stats.pending     || 0, icon: '⏳', col: '#6B7280' },
+            { label: 'In Progress',  val: stats.in_progress || 0, icon: '🔬', col: '#EA580C' },
+            { label: 'Complete',     val: stats.complete    || 0, icon: '✅', col: '#16A34A' },
+            { label: 'Out of Spec',  val: stats.out_of_spec || 0, icon: '⚠️', col: '#DC2626' },
+          ].map(s => (
+            <div key={s.label} style={{
+              flex: 1, minWidth: '100px',
+              background: '#fff', borderRadius: '12px',
+              border: `2px solid ${s.col}22`,
+              padding: '10px', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '20px' }}>{s.icon}</div>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: s.col }}>
+                {s.val}
+              </div>
+              <div style={{ fontSize: '10px', color: '#6B7280', fontWeight: '600' }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Live results table */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center
-                          justify-between">
-            <h3 className="font-semibold text-gray-800">Live Results</h3>
-            <p className="text-xs text-gray-400">
-              Updated: {format(lastUpdate, 'HH:mm:ss')}
+        {/* Last updated */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px',
+                      marginBottom: '12px' }}>
+          <div style={{
+            width: '8px', height: '8px', borderRadius: '50%',
+            background: '#16A34A', animation: 'pulse 2s infinite',
+          }} />
+          <span style={{ fontSize: '12px', color: '#6B7280' }}>
+            Live • Last updated: {format(lastUpd, 'HH:mm:ss')}
+          </span>
+        </div>
+
+        {/* ── Results Table ── */}
+        {loading ? (
+          <LoadingSpinner text="Loading live results..." />
+        ) : filteredRows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9CA3AF' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
+            <p style={{ fontWeight: '600' }}>No results submitted yet</p>
+            <p style={{ fontSize: '13px', marginTop: '4px' }}>
+              Results will appear here as analysts submit them
             </p>
           </div>
+        ) : (
+          <div style={{ overflowX: 'auto', borderRadius: '16px',
+                        boxShadow: '0 2px 12px rgba(107,33,168,0.08)',
+                        border: '1.5px solid #E9D5FF' }}>
+            <table style={{
+              width: '100%', borderCollapse: 'collapse',
+              background: '#fff', fontSize: '13px',
+            }}>
+              <thead>
+                <tr style={{
+                  background: 'linear-gradient(135deg, #6B21A8, #7C3AED)',
+                  color: '#fff',
+                }}>
+                  <th style={thSt}>Sample Name</th>
+                  <th style={thSt}>Sample No.</th>
+                  <th style={thSt}>Time Registered</th>
+                  {/* Dynamic parameter columns */}
+                  {filteredRows[0]?.parameters
+                    .sort((a,b) => (a.tests?.display_order||0) - (b.tests?.display_order||0))
+                    .map(p => (
+                    <th key={p.id} style={thSt}>
+                      <div>{p.tests?.name}</div>
+                      <div style={{ fontSize: '10px', color: '#DDD6FE', fontWeight: '400' }}>
+                        {p.tests?.unit || '—'}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-          {loading ? (
-            <LoadingSpinner text="Loading live results..." />
-          ) : results.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              <Activity size={32} className="mx-auto mb-3 opacity-30" />
-              <p>No results submitted yet today</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-                    <th className="text-left px-4 py-3">Sample</th>
-                    <th className="text-left px-4 py-3">Parameter</th>
-                    <th className="text-left px-4 py-3">Result</th>
-                    <th className="text-left px-4 py-3">Remarks</th>
-                    <th className="text-left px-4 py-3">Action</th>
-                    <th className="text-left px-4 py-3">Analyst</th>
-                    <th className="text-left px-4 py-3">Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {results.map(r => (
+              <tbody>
+                {filteredRows.map((row, rowIdx) => {
+                  const clean = rowIsClean(row.parameters);
+                  const sorted = [...row.parameters].sort(
+                    (a,b) => (a.tests?.display_order||0) - (b.tests?.display_order||0)
+                  );
+                  return (
                     <tr
-                      key={r.id}
-                      className={`hover:bg-gray-50 transition-colors
-                        ${r.result_status === 'fail_low' || r.result_status === 'fail_high'
-                          ? 'bg-red-50/40' : ''}`}
+                      key={row.sample?.id || rowIdx}
+                      style={{
+                        background: clean
+                          ? 'rgba(22,163,74,0.04)'
+                          : 'rgba(220,38,38,0.04)',
+                        borderBottom: '1px solid #F3E8FF',
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = clean
+                          ? 'rgba(22,163,74,0.12)'
+                          : 'rgba(220,38,38,0.12)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = clean
+                          ? 'rgba(22,163,74,0.04)'
+                          : 'rgba(220,38,38,0.04)';
+                      }}
                     >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 text-xs">
-                          {r.registered_samples?.sample_name}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {r.registered_samples?.sample_number}
-                        </p>
+                      {/* Sample name */}
+                      <td style={tdSt}>
+                        <div style={{ fontWeight: '600', color: '#1F2937' }}>
+                          {row.sample?.sample_name}
+                        </div>
+                        {row.sample?.brands?.name && (
+                          <div style={{
+                            fontSize: '11px', color: '#7C3AED',
+                            background: '#F5F3FF', padding: '1px 6px',
+                            borderRadius: '10px', display: 'inline-block',
+                            marginTop: '2px',
+                          }}>
+                            {row.sample.brands.name}
+                          </div>
+                        )}
+                        {/* Out of spec indicator */}
+                        {!clean && (
+                          <div style={{
+                            fontSize: '10px', color: '#DC2626',
+                            fontWeight: '700', marginTop: '2px',
+                          }}>
+                            ⚠️ Out of Spec
+                          </div>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-700">
-                        {r.tests?.name}
+
+                      {/* Sample number */}
+                      <td style={{ ...tdSt, fontFamily: 'monospace',
+                                   fontSize: '11px', color: '#6B21A8' }}>
+                        {row.sample?.sample_number}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded-lg text-xs
-                                          font-bold border ${statusColor(r.result_status)}`}>
-                          {r.result_value} {r.tests?.unit || ''}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-bold
-                          ${r.remarks === 'OK'
-                            ? 'text-green-600'
-                            : 'text-red-600'}`}>
-                          {r.remarks || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-semibold
-                          ${r.action === 'Pass'
-                            ? 'text-green-600'
-                            : 'text-red-600'}`}>
-                          {r.action || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">
-                        {r.analyst_signature || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                        {r.submitted_at
-                          ? format(new Date(r.submitted_at), 'HH:mm')
+
+                      {/* Time registered */}
+                      <td style={{ ...tdSt, fontSize: '11px', color: '#6B7280' }}>
+                        {row.sample?.registered_at
+                          ? format(new Date(row.sample.registered_at), 'HH:mm')
                           : '—'}
                       </td>
+
+                      {/* Parameter result cells */}
+                      {sorted.map(p => {
+                        const c = cellColor(p.result_status);
+                        return (
+                          <td key={p.id} style={{
+                            ...tdSt, textAlign: 'center', padding: '8px',
+                          }}>
+                            {p.result_value ? (
+                              <div>
+                                {/* Result value */}
+                                <div style={{
+                                  display: 'inline-block',
+                                  background: c.bg,
+                                  color: c.text,
+                                  border: `1px solid ${c.border}`,
+                                  borderRadius: '6px',
+                                  padding: '3px 8px',
+                                  fontWeight: '700',
+                                  fontSize: '13px',
+                                }}>
+                                  {p.result_value}
+                                </div>
+                                {/* Remarks badge */}
+                                {p.remarks && (
+                                  <div style={{
+                                    fontSize: '10px', fontWeight: '700',
+                                    color: c.text, marginTop: '2px',
+                                  }}>
+                                    {p.remarks}
+                                  </div>
+                                )}
+                                {/* Submission time */}
+                                {p.submitted_at && (
+                                  <div style={{
+                                    fontSize: '10px', color: '#9CA3AF',
+                                    marginTop: '2px',
+                                  }}>
+                                    {format(new Date(p.submitted_at), 'HH:mm')}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#D1D5DB', fontSize: '18px' }}>—</span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </main>
+
+      <PageFooter />
     </div>
   );
 }
+
+
+const thSt = {
+  padding: '12px 14px', textAlign: 'left',
+  fontWeight: '700', fontSize: '12px',
+  whiteSpace: 'nowrap', letterSpacing: '0.3px',
+};
+const tdSt = {
+  padding: '10px 14px', verticalAlign: 'top',
+};

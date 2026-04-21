@@ -8,6 +8,7 @@ import { useAuth }     from '../context/AuthContext';
 import { samplesService }  from '../services/samples.service';
 import { supabase }        from '../services/supabase';
 import { format }          from 'date-fns';
+import SupervisorNotifications from '../components/SupervisorNotifications';
 
 export default function DashboardPage() {
   const [samples,      setSamples]      = useState([]);
@@ -117,6 +118,10 @@ export default function DashboardPage() {
           {statCard('In Progress',  counts.in_progress,  '#EA580C', '🔬')}
           {statCard('Complete',     counts.complete,     '#16A34A', '✅')}
         </div>
+
+        {/* QC Head comments for supervisors */}
+  <SupervisorNotifications />
+
 
         {/* Controls Row */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap',

@@ -10,6 +10,7 @@ import SampleRegistrationPage    from './pages/SampleRegistrationPage';
 import AnalysisPage              from './pages/AnalysisPage';
 import DeptDashboardPage         from './pages/DeptDashboardPage';
 import AdminPage                 from './pages/AdminPage';
+import ReportsPage               from './pages/ReportsPage';
 
 export default function App() {
   return (
@@ -58,6 +59,12 @@ export default function App() {
               <DeptDashboardPage />
             </ProtectedRoute>
           } />
+
+           <Route path="/reports" element={
+    <ProtectedRoute roles={['QC Head','QC Assistant']}>
+      <ReportsPage />
+    </ProtectedRoute>
+  } />
 
           {/* Admin panel */}
           <Route path="/admin" element={
