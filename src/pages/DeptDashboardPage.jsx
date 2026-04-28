@@ -599,7 +599,6 @@ export default function DeptDashboardPage() {
                         verticalAlign : 'bottom',
                         background    : HEAD_BG,
                         borderLeft    : '2px solid rgba(255,255,255,0.25)',
-                        borderBottom  : '1px solid rgba(255,255,255,0.15)',
                       }}>
                         {/* Test name — gold, bold */}
                         <div style={{
