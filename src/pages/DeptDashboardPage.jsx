@@ -236,130 +236,168 @@ export default function DeptDashboardPage() {
         position:'sticky', top:0, zIndex:100,
       }}>
         <div style={{
-          padding:'0 16px', minHeight:'58px',
-          display:'grid',
-          gridTemplateColumns:'1fr auto 1fr',
-          alignItems:'center',
-          gap:'12px',
-        }}>
-          {/* Left: logo + title */}
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <div style={{ width:'38px', height:'38px', borderRadius:'10px', overflow:'hidden', flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,0.2)' }}>
-              {bulqcLogo
-                ? <img src={bulqcLogo} alt="BUL QC" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                : <div style={{ width:'100%', height:'100%', background:G }}/>
-              }
-            </div>
-            <div>
-              <div style={{ fontWeight:'800', fontSize:'15px', lineHeight:1.1 }}>
-                {user?.departments?.name||'Detergent'} Live Dashboard
-              </div>
-              <div style={{ fontSize:'10px', color:'#DDD6FE' }}>Real-time QC Results</div>
-            </div>
-          </div>
+  padding        : '0 16px',
+  minHeight      : '58px',
+  display        : 'grid',
+  gridTemplateColumns: '1fr auto 1fr',
+  alignItems     : 'center',
+  gap            : '12px',
+}}>
 
-          {/* ── CENTRE: SantosInfographics logo ── */}
-<div style={{ display:'flex', justifyContent:'center', alignItems:'center' }}>
-  {santosLogo ? (
-    <img
-      src={santosLogo}
-      alt="SantosInfographics"
-      title="Designed by SantosInfographics"
-      style={{
-        height        : '46px',
-        width         : 'auto',
-        objectFit     : 'contain',
-        borderRadius  : '8px',
-        background    : '#fff',
-        padding       : '4px 10px',
-        boxShadow     : '0 2px 8px rgba(0,0,0,0.2)',
-      }}
-    />
-  ) : (
+  {/* ── LEFT: BUL QC logo + title ── */}
+  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
     <div style={{
-      display        : 'flex',
-      flexDirection  : 'column',
-      alignItems     : 'center',
-      background     : 'rgba(255,255,255,0.15)',
-      borderRadius   : '10px',
-      padding        : '6px 16px',
-      border         : '1px solid rgba(255,255,255,0.3)',
+      width:'38px', height:'38px', borderRadius:'10px',
+      overflow:'hidden', flexShrink:0,
+      boxShadow:'0 2px 8px rgba(0,0,0,0.2)',
     }}>
-      <span style={{ fontSize:'10px', color:'#DDD6FE', fontWeight:'700', letterSpacing:'1px' }}>
-        Designed by
-      </span>
-      <span style={{ fontSize:'15px', color:'#FFB81C', fontWeight:'900', letterSpacing:'0.5px' }}>
-        SantosInfographics
-      </span>
+      {bulqcLogo
+        ? <img src={bulqcLogo} alt="BUL QC"
+            style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+        : <div style={{ width:'100%', height:'100%', background:'#FFB81C' }}/>
+      }
     </div>
-  )}
-</div>
+    <div>
+      <div style={{ fontWeight:'800', fontSize:'15px', lineHeight:1.1 }}>
+        {user?.departments?.name||'Detergent'} Live Dashboard
+      </div>
+      <div style={{ fontSize:'10px', color:'#DDD6FE' }}>
+        Real-time QC Results
+      </div>
+    </div>
+  </div>
 
-          {/* Right: clock, bell, avatar, santos logo, logout */}
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
-            {/* Clock */}
-            <div style={{
-              background:'rgba(255,255,255,0.15)', borderRadius:'20px',
-              padding:'5px 14px', fontSize:'15px', fontWeight:'800',
-              fontFamily:'monospace', letterSpacing:'1px',
-              border:'1px solid rgba(255,255,255,0.2)',
-            }}>
-              🕐 {format(clock,'HH:mm:ss')}
-            </div>
+  {/* ── CENTRE: SantosInfographics logo only ── */}
+  <div style={{ display:'flex', justifyContent:'center', alignItems:'center' }}>
+    {santosLogo ? (
+      <img
+        src={santosLogo}
+        alt="SantosInfographics"
+        title="Designed by SantosInfographics"
+        style={{
+          height      : '46px',
+          width       : 'auto',
+          objectFit   : 'contain',
+          borderRadius: '8px',
+          background  : '#fff',
+          padding     : '4px 10px',
+          boxShadow   : '0 2px 8px rgba(0,0,0,0.2)',
+        }}
+      />
+    ) : (
+      <div style={{
+        display       : 'flex',
+        flexDirection : 'column',
+        alignItems    : 'center',
+        background    : 'rgba(255,255,255,0.15)',
+        borderRadius  : '10px',
+        padding       : '6px 16px',
+        border        : '1px solid rgba(255,255,255,0.3)',
+      }}>
+        <span style={{ fontSize:'10px', color:'#DDD6FE', fontWeight:'700' }}>
+          Designed by
+        </span>
+        <span style={{ fontSize:'15px', color:'#FFB81C', fontWeight:'900' }}>
+          SantosInfographics
+        </span>
+      </div>
+    )}
+  </div>
 
-            <NotificationBell departmentId={user?.department_id}/>
+  {/* ── RIGHT: Clock | Bell | Avatar | Logout — pushed far right ── */}
+  <div style={{
+    display        : 'flex',
+    alignItems     : 'center',
+    gap            : '10px',
+    justifyContent : 'flex-end',   /* ← pushes everything to far right */
+  }}>
 
-            {/* Avatar */}
-            <div style={{ position:'relative' }}>
-              <div onClick={() => setSA(!showAv)} title="Change profile picture"
-                style={{
-                  width:'38px', height:'38px', borderRadius:'50%',
-                  background: avatar ? 'transparent' : G,
-                  border:'2px solid rgba(255,255,255,0.5)',
-                  cursor:'pointer', overflow:'hidden',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontWeight:'800', fontSize:'14px', color:P, flexShrink:0,
-                }}>
-                {avatar
-                  ? <img src={avatar} alt="av" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                  : initials}
-              </div>
-              {showAv && (
-                <div style={{
-                  position:'absolute', right:0, top:'46px',
-                  background:'#fff', borderRadius:'14px',
-                  boxShadow:'0 8px 32px rgba(107,33,168,0.2)',
-                  border:`1.5px solid ${PL}`, minWidth:'220px', zIndex:200, overflow:'hidden',
-                }}>
-                  <div style={{ padding:'12px 16px', background:'#F5F3FF', borderBottom:`1px solid ${PL}` }}>
-                    <p style={{ fontWeight:'700', color:'#1F2937', margin:0 }}>{user?.full_name}</p>
-                    <p style={{ fontSize:'11px', color:PM, margin:'2px 0 0' }}>{user?.roles?.name}</p>
-                  </div>
-                  <div style={{ padding:'12px 16px' }}>
-                    <input ref={fileRef} type="file" accept="image/*" onChange={uploadAv} style={{ display:'none' }}/>
-                    <button onClick={() => fileRef.current?.click()} style={{ width:'100%', background:PM, color:'#fff', border:'none', borderRadius:'8px', padding:'9px', fontSize:'13px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
-                      📷 Upload Photo
-                    </button>
-                    {avatar && (
-                      <button onClick={() => { setAv(null); localStorage.removeItem('bul_qc_avatar_'+(user?.id||'g')); setSA(false); }}
-                        style={{ width:'100%', background:'#FEF2F2', color:'#DC2626', border:'1px solid #FECACA', borderRadius:'8px', padding:'7px', fontSize:'12px', cursor:'pointer', fontFamily:'inherit', marginTop:'6px' }}>
-                        🗑 Remove Photo
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+    {/* Clock */}
+    <div style={{
+      background   : 'rgba(255,255,255,0.15)',
+      borderRadius : '20px',
+      padding      : '5px 14px',
+      fontSize     : '15px',
+      fontWeight   : '800',
+      fontFamily   : 'monospace',
+      letterSpacing: '1px',
+      border       : '1px solid rgba(255,255,255,0.2)',
+    }}>
+      🕐 {format(clock,'HH:mm:ss')}
+    </div>
 
-            <button onClick={logout} style={{
-              background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)',
-              color:'#fff', borderRadius:'8px', padding:'7px 14px',
+    <NotificationBell departmentId={user?.department_id}/>
+
+    {/* Avatar */}
+    <div style={{ position:'relative' }}>
+      <div onClick={() => setSA(!showAv)} title="Change profile picture"
+        style={{
+          width:'38px', height:'38px', borderRadius:'50%',
+          background: avatar ? 'transparent' : '#FFB81C',
+          border:'2px solid rgba(255,255,255,0.5)',
+          cursor:'pointer', overflow:'hidden',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontWeight:'800', fontSize:'14px', color:'#6B21A8', flexShrink:0,
+        }}>
+        {avatar
+          ? <img src={avatar} alt="av"
+              style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+          : initials}
+      </div>
+      {showAv && (
+        <div style={{
+          position:'absolute', right:0, top:'46px',
+          background:'#fff', borderRadius:'14px',
+          boxShadow:'0 8px 32px rgba(107,33,168,0.2)',
+          border:'1.5px solid #EDE9FE',
+          minWidth:'220px', zIndex:200, overflow:'hidden',
+        }}>
+          <div style={{ padding:'12px 16px', background:'#F5F3FF', borderBottom:'1px solid #EDE9FE' }}>
+            <p style={{ fontWeight:'700', color:'#1F2937', margin:0 }}>{user?.full_name}</p>
+            <p style={{ fontSize:'11px', color:'#7C3AED', margin:'2px 0 0' }}>{user?.roles?.name}</p>
+          </div>
+          <div style={{ padding:'12px 16px' }}>
+            <input ref={fileRef} type="file" accept="image/*"
+              onChange={uploadAv} style={{ display:'none' }}/>
+            <button onClick={() => fileRef.current?.click()} style={{
+              width:'100%', background:'#7C3AED', color:'#fff',
+              border:'none', borderRadius:'8px', padding:'9px',
               fontSize:'13px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit',
-            }}>
-              🚪 Logout
-            </button>
+            }}>📷 Upload Photo</button>
+            {avatar && (
+              <button onClick={() => {
+                setAv(null);
+                localStorage.removeItem('bul_qc_avatar_'+(user?.id||'g'));
+                setSA(false);
+              }} style={{
+                width:'100%', background:'#FEF2F2', color:'#DC2626',
+                border:'1px solid #FECACA', borderRadius:'8px',
+                padding:'7px', fontSize:'12px', cursor:'pointer',
+                fontFamily:'inherit', marginTop:'6px',
+              }}>🗑 Remove Photo</button>
+            )}
           </div>
         </div>
+      )}
+    </div>
+
+    {/* Logout */}
+    <button onClick={logout} style={{
+      background   : 'rgba(255,255,255,0.15)',
+      border       : '1px solid rgba(255,255,255,0.3)',
+      color        : '#fff',
+      borderRadius : '8px',
+      padding      : '7px 14px',
+      fontSize     : '13px',
+      fontWeight   : '600',
+      cursor       : 'pointer',
+      fontFamily   : 'inherit',
+    }}>
+      🚪 Logout
+    </button>
+
+  </div>
+</div>
       </header>
 
       {/* Toasts */}
