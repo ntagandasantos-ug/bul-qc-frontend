@@ -584,75 +584,66 @@ export default function DeptDashboardPage() {
                     )}
                   </tr>
 
-                  {/* ── ROW 2: Test names in GOLD ── */}
-                  <tr>
-                    {allTests.map(testName => (
-                      <th key={'name_'+testName} style={{
-                        position      : 'sticky',
-                        top           : '41px',   /* offset below row 1 */
-                        zIndex        : 70,
-                        width         : `${TEST_W}px`,
-                        minWidth      : `${TEST_W}px`,
-                        maxWidth      : `${TEST_W}px`,
-                        padding       : '8px 8px 0px',
-                        textAlign     : 'center',
-                        verticalAlign : 'bottom',
-                        background    : HEAD_BG,
-                        borderLeft    : '2px solid rgba(255,255,255,0.25)',
-                      }}>
-                        {/* Test name — gold, bold */}
-                        <div style={{
-                          fontWeight   : '800',
-                          fontSize     : '14px',
-                          color        : G,
-                          letterSpacing: '0.3px',
-                        }}>
-                          {testName}
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
+                  {/* ── SINGLE ROW: test name + spec together, no gap possible ── */}
+<tr>
+  {allTests.map(testName => {
+    const m = tMeta[testName] || {};
+    return (
+      <th key={'col_'+testName} style={{
+        position      : 'sticky',
+        top           : '41px',
+        zIndex        : 70,
+        width         : `${TEST_W}px`,
+        minWidth      : `${TEST_W}px`,
+        maxWidth      : `${TEST_W}px`,
+        padding       : '8px 8px 10px',
+        textAlign     : 'center',
+        verticalAlign : 'middle',
+        background    : HEAD_BG,
+        borderLeft    : '2px solid rgba(255,255,255,0.25)',
+        borderBottom  : '3px solid rgba(255,255,255,0.5)',
+      }}>
+        {/* Test name in gold */}
+        <div style={{
+          fontWeight   : '800',
+          fontSize     : '14px',
+          color        : '#FFB81C',
+          letterSpacing: '0.3px',
+          lineHeight   : 1.2,
+        }}>
+          {testName}
+        </div>
 
-                  {/* ── ROW 3: Specs in GOLD under each test name ── */}
-                  <tr>
-                    {allTests.map(testName => {
-                      const m = tMeta[testName] || {};
-                      return (
-                        <th key={'spec_'+testName} style={{
-                          position      : 'sticky',
-                          top           : '82px',   /* offset below rows 1+2 */
-                          zIndex        : 70,
-                          width         : `${TEST_W}px`,
-                          minWidth      : `${TEST_W}px`,
-                          maxWidth      : `${TEST_W}px`,
-                          padding       : '0px 8px 10px',
-                          textAlign     : 'center',
-                          verticalAlign : 'top',
-                          background    : HEAD_BG,
-                          borderLeft    : '2px solid rgba(255,255,255,0.25)',
-                          borderBottom  : '3px solid rgba(255,255,255,0.5)',
-                        }}>
-                          {/* Spec range in gold e.g. (9.5 – 11.0) */}
-                          {m.spec ? (
-                            <div style={{ fontSize:'12px', color:G, fontWeight:'700', lineHeight:1.4 }}>
-                              ({m.spec})
-                              {m.unit && (
-                                <span style={{ color:G, fontWeight:'800', marginLeft:'3px' }}>
-                                  {m.unit}
-                                </span>
-                              )}
-                            </div>
-                          ) : m.unit ? (
-                            <div style={{ fontSize:'12px', color:G, fontWeight:'700' }}>
-                              [{m.unit}]
-                            </div>
-                          ) : (
-                            <div style={{ fontSize:'11px', color:'rgba(255,255,255,0.3)' }}>—</div>
-                          )}
-                        </th>
-                      );
-                    })}
-                  </tr>
+        {/* Spec range directly below — zero gap guaranteed */}
+        {m.spec ? (
+          <div style={{
+            fontSize  : '12px',
+            color     : '#FFB81C',
+            fontWeight: '700',
+            marginTop : '3px',
+            lineHeight: 1.2,
+          }}>
+            ({m.spec})
+            {m.unit && (
+              <span style={{ fontWeight:'800', marginLeft:'3px' }}>
+                {m.unit}
+              </span>
+            )}
+          </div>
+        ) : m.unit ? (
+          <div style={{
+            fontSize  : '12px',
+            color     : '#FFB81C',
+            fontWeight: '700',
+            marginTop : '3px',
+          }}>
+            [{m.unit}]
+          </div>
+        ) : null}
+      </th>
+    );
+  })}
+</tr>
 
                 </thead>
 
