@@ -145,7 +145,7 @@ export function AuthProvider({ children }) {
   const isSupervisor = roleName === 'Shift Supervisor';
   const isAnalyst    = roleName === 'Analyst';
   const isSampler    = roleName === 'Sampler';
-  const isDeptHead   = roleName === 'Department Head' || roleName === 'Department Assistant';
+  const isDeptHead   = roleName === 'Department Head' || roleName === 'Department Assistant'; 
   const canSubmitResults  = isAdmin || isSupervisor || isAnalyst || !!signingAs;
   const canRegisterSamples= isAdmin || isSupervisor || isAnalyst || isSampler || !!signingAs;
 

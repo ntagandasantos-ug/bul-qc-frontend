@@ -9,6 +9,7 @@ import DashboardPage             from './pages/DashboardPage';
 import SampleRegistrationPage    from './pages/SampleRegistrationPage';
 import AnalysisPage              from './pages/AnalysisPage';
 import DeptDashboardPage         from './pages/DeptDashboardPage';
+import RefDashboardPage          from './pages/RefDashboardPage';
 import AdminPage                 from './pages/AdminPage';
 import ReportsPage               from './pages/ReportsPage';
 
@@ -59,6 +60,12 @@ export default function App() {
               <DeptDashboardPage />
             </ProtectedRoute>
           } />
+
+          <Route path="/dashboard/ref" element={
+  <ProtectedRoute roles={['Department Head','Department Assistant']}>
+    <RefDashboardPage />
+  </ProtectedRoute>
+} />
 
            <Route path="/reports" element={
     <ProtectedRoute roles={['QC Head','QC Assistant']}>
