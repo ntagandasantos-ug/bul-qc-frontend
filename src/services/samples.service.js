@@ -1,9 +1,19 @@
+// ============================================================
+// FILE: frontend/bul-qc-app/src/services/samples.service.js
+// Adds registerBulkSamples method
+// ============================================================
+
 import api from './api';
 
 export const samplesService = {
 
   registerSample: async (sampleData) => {
     const res = await api.post('/samples', sampleData);
+    return res.data;
+  },
+
+  registerBulkSamples: async (samplesArray) => {
+    const res = await api.post('/samples/bulk', { samples: samplesArray });
     return res.data;
   },
 
