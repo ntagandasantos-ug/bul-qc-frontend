@@ -269,7 +269,7 @@ export default function RefDashboardPage() {
             </div>
             <div>
               <div style={{ fontWeight:'800', fontSize:'14px', lineHeight:1.1 }}>
-                Refinery QC
+                Refinery Results Dashboard
               </div>
               <div style={{ fontSize:'10px', color:'#DDD6FE' }}>Live Results</div>
             </div>
@@ -279,7 +279,7 @@ export default function RefDashboardPage() {
           <div style={{ display:'flex', justifyContent:'center', alignItems:'center' }}>
             {santosLogo ? (
               <img src={santosLogo} alt="Santos" style={{
-                height:'44px', width:'auto', objectFit:'contain',
+                height:'44px', width:'80px', objectFit:'contain',
                 borderRadius:'8px', background:'#fff',
                 padding:'3px 8px',
                 boxShadow:'0 2px 6px rgba(0,0,0,0.15)',
