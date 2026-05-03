@@ -1,15 +1,14 @@
 // ============================================================
 // FILE: frontend/bul-qc-app/src/pages/LoginPage.jsx
-// Clean reset — no email verification complexity
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-let bulqcLogo = null;
-try { bulqcLogo = require('../assets/bulqc_logo.png'); } catch(e) {}
+let bulqcLogo  = null;
 let santosLogo = null;
+try { bulqcLogo  = require('../assets/bulqc_logo.png');  } catch(e) {}
 try { santosLogo = require('../assets/santos_logo.png'); } catch(e) {}
 
 export default function LoginPage() {
@@ -23,23 +22,15 @@ export default function LoginPage() {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
 
-  // If already logged in, redirect immediately
   useEffect(() => {
-    if (user) {
-      redirectByRole(user);
-    }
+    if (user) redirectByRole(user);
   }, [user]);
 
   const redirectByRole = (u) => {
     const role     = u.roles?.name;
     const deptCode = u.departments?.code;
-
     if (role === 'Department Head' || role === 'Department Assistant') {
-      if (deptCode === 'REF') {
-        navigate('/dashboard/ref', { replace: true });
-      } else {
-        navigate('/dashboard/dept', { replace: true });
-      }
+      navigate(deptCode === 'REF' ? '/dashboard/ref' : '/dashboard/dept', { replace: true });
     } else {
       navigate('/dashboard', { replace: true });
     }
@@ -48,180 +39,145 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-
     if (!username.trim()) { setError('Please enter your username.'); return; }
     if (!password.trim()) { setError('Please enter your password.'); return; }
-
     setLoading(true);
     try {
-      const result = await login(
-        username.trim().toLowerCase(),
-        password,
-        signingAs.trim() || undefined
-      );
+      const result = await login(username.trim().toLowerCase(), password, signingAs.trim() || undefined);
       redirectByRole(result.user);
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Login failed.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+      setError(err.response?.data?.error || err.message || 'Login failed.');
+    } finally { setLoading(false); }
   };
 
-  // ── Styles ────────────────────────────────────────────────
+  // ── Styles ─────────────────────────────────────────────
   const inputSt = {
-    width: '100%',
-    border: '1.5px solid #E9D5FF',
-    borderRadius: '10px',
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: '#111827',
-    backgroundColor: '#fff',
-    fontFamily: 'inherit',
-    boxSizing: 'border-box',
-    outline: 'none',
+    width:'100%', border:'1.5px solid #E9D5FF', borderRadius:'10px',
+    padding:'12px 14px', fontSize:'14px', color:'#111827',
+    backgroundColor:'#fff', fontFamily:'inherit',
+    boxSizing:'border-box', outline:'none',
   };
 
-  const labelSt = {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: '700',
-    color: '#4C1D95',
-    marginBottom: '6px',
-  };
+  const SantosBlock = ({ style }) => (
+    <div style={style}>
+      {santosLogo ? (
+        <img src={santosLogo} alt="SantosInfographics"
+          style={{
+            height:'52px', width:'auto',
+            objectFit:'contain',
+            borderRadius:'10px',
+            background:'rgba(255,255,255,0.9)',
+            padding:'4px 10px',
+            boxShadow:'0 2px 8px rgba(0,0,0,0.15)',
+          }}
+        />
+      ) : (
+        <div style={{
+          background:'rgba(255,255,255,0.92)',
+          borderRadius:'10px', padding:'6px 14px',
+          boxShadow:'0 2px 8px rgba(0,0,0,0.12)',
+        }}>
+          <div style={{ fontSize:'9px', color:'#6B21A8', fontWeight:'700', letterSpacing:'1px' }}>Designed by</div>
+          <div style={{ fontSize:'14px', color:'#6B21A8', fontWeight:'900', letterSpacing:'0.5px' }}>SantosInfographics</div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{
-      minHeight: '100vh',
-      background: '#ffffff',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      position: 'relative',
-      overflow: 'hidden',
+      minHeight:'100vh', background:'#ffffff',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      padding:'20px', position:'relative', overflow:'hidden',
     }}>
 
-      {/* ── Red watermark ── */}
+      {/* ── Watermark — clearly visible red ── */}
       <div style={{
-        position: 'fixed',
-        top: '50%', left: '50%',
-        transform: 'translate(-50%,-50%) rotate(-30deg)',
-        pointerEvents: 'none',
-        userSelect: 'none',
-        zIndex: 0,
-        width: '200%',
-        textAlign: 'center',
+        position:'fixed', top:0, left:0,
+        width:'100%', height:'100%',
+        pointerEvents:'none', userSelect:'none', zIndex:0,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        overflow:'hidden',
       }}>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} style={{
-            fontSize: '16px',
-            fontWeight: '700',
-            color: 'rgba(220,38,38,0.05)',
-            whiteSpace: 'nowrap',
-            marginBottom: '50px',
-            letterSpacing: '6px',
-          }}>
-            Designed by SantosInfographics &nbsp;&nbsp;&nbsp;
-            Designed by SantosInfographics &nbsp;&nbsp;&nbsp;
-            Designed by SantosInfographics
-          </div>
-        ))}
+        <div style={{
+          transform:'rotate(-30deg)',
+          width:'200%', textAlign:'center',
+        }}>
+          {Array.from({ length: 14 }).map((_, i) => (
+            <div key={i} style={{
+              fontSize:'18px', fontWeight:'800',
+              // Clearly visible but subtle — deep red 12% opacity
+              color:'rgba(180, 0, 0, 0.12)',
+              whiteSpace:'nowrap', marginBottom:'52px',
+              letterSpacing:'6px',
+            }}>
+              Designed by SantosInfographics &nbsp;&nbsp;
+              Designed by SantosInfographics &nbsp;&nbsp;
+              Designed by SantosInfographics
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ── Santos logo top-right ── */}
-      <div style={{
-        position: 'fixed',
-        top: '16px', right: '20px',
-        zIndex: 10,
-      }}>
-        {santosLogo ? (
-          <img src={santosLogo} alt="SantosInfographics"
-            style={{ height: '40px', width: 'auto', objectFit: 'contain' }} />
-        ) : (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{
-              width: '36px', height: '36px',
-              background: '#DC2626', borderRadius: '50%',
-              color: '#fff', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              fontWeight: '900', fontSize: '13px',
-              marginLeft: 'auto', marginBottom: '2px',
-            }}>SI</div>
-            <div style={{ fontSize: '10px', color: '#DC2626', fontWeight: '700' }}>
-              SantosInfographics
-            </div>
-          </div>
-        )}
-      </div>
+      {/* ── Santos logo TOP LEFT ── */}
+      <SantosBlock style={{
+        position:'fixed', top:'14px', left:'16px', zIndex:10,
+      }}/>
+
+      {/* ── Santos logo TOP RIGHT ── */}
+      <SantosBlock style={{
+        position:'fixed', top:'14px', right:'16px', zIndex:10,
+      }}/>
 
       {/* ── Login Card ── */}
       <div style={{
-        background: '#fff',
-        borderRadius: '20px',
-        boxShadow: '0 20px 60px rgba(124,58,237,0.15)',
-        border: '1px solid #EDE9FE',
-        overflow: 'hidden',
-        width: '100%',
-        maxWidth: '400px',
-        position: 'relative',
-        zIndex: 1,
+        background:'#fff', borderRadius:'20px',
+        boxShadow:'0 20px 60px rgba(124,58,237,0.18)',
+        border:'1.5px solid #EDE9FE',
+        overflow:'hidden', width:'100%', maxWidth:'400px',
+        position:'relative', zIndex:1, marginTop:'20px',
       }}>
 
         {/* Purple header */}
         <div style={{
-          background: 'linear-gradient(135deg, #6B21A8 0%, #7C3AED 100%)',
-          padding: '28px 24px',
-          textAlign: 'center',
+          background:'linear-gradient(135deg, #6B21A8 0%, #7C3AED 100%)',
+          padding:'28px 24px', textAlign:'center',
         }}>
-          {/* Logo */}
+          {/* BUL QC Logo — bigger and clear */}
           <div style={{
-            width: '68px', height: '68px',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            margin: '0 auto 14px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-            background: '#FFB81C',
+            width:'76px', height:'76px', borderRadius:'18px',
+            overflow:'hidden', margin:'0 auto 14px',
+            boxShadow:'0 4px 16px rgba(0,0,0,0.3)',
+            background:'#FFB81C',
           }}>
             {bulqcLogo ? (
               <img src={bulqcLogo} alt="BUL QC"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
             ) : (
               <div style={{
-                width: '100%', height: '100%',
-                background: '#FFB81C',
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '30px',
+                width:'100%', height:'100%', background:'#FFB81C',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:'34px',
               }}>🧪</div>
             )}
           </div>
-
-          <h1 style={{
-            color: '#fff', fontSize: '22px',
-            fontWeight: '800', margin: '0 0 4px',
-          }}>
+          <h1 style={{ color:'#fff', fontSize:'24px', fontWeight:'800', margin:'0 0 4px' }}>
             BUL QC App
           </h1>
-          <p style={{ color: '#DDD6FE', fontSize: '12px', margin: 0 }}>
+          <p style={{ color:'#DDD6FE', fontSize:'12px', margin:0 }}>
             Laboratory Information Management System
           </p>
         </div>
 
         {/* Form body */}
-        <div style={{ padding: '28px 24px' }}>
+        <div style={{ padding:'28px 24px' }}>
 
-          {/* Error message */}
           {error && (
             <div style={{
-              background: '#FEF2F2',
-              border: '1.5px solid #FECACA',
-              borderRadius: '10px',
-              padding: '12px 14px',
-              color: '#DC2626',
-              fontSize: '13px',
-              fontWeight: '600',
-              marginBottom: '18px',
+              background:'#FEF2F2', border:'1.5px solid #FECACA',
+              borderRadius:'10px', padding:'12px 14px',
+              color:'#DC2626', fontSize:'13px', fontWeight:'600',
+              marginBottom:'18px',
             }}>
               ⚠️ {error}
             </div>
@@ -229,12 +185,11 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin}>
 
-            {/* Username */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={labelSt}>Username</label>
-              <input
-                type="text"
-                value={username}
+            <div style={{ marginBottom:'16px' }}>
+              <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'6px' }}>
+                Username
+              </label>
+              <input type="text" value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder="e.g. shift_magezi"
                 style={inputSt}
@@ -245,109 +200,72 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Password */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={labelSt}>Password</label>
-              <div style={{ position: 'relative' }}>
+            <div style={{ marginBottom:'16px' }}>
+              <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'6px' }}>
+                Password
+              </label>
+              <div style={{ position:'relative' }}>
                 <input
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  style={{ ...inputSt, paddingRight: '44px' }}
+                  style={{ ...inputSt, paddingRight:'44px' }}
                   autoComplete="current-password"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  style={{
-                    position: 'absolute', right: '12px',
-                    top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: '18px',
-                    padding: '4px',
-                  }}
-                >
+                <button type="button" onClick={() => setShowPw(!showPw)}
+                  style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:'18px', padding:'4px' }}>
                   {showPw ? '🙈' : '👁️'}
                 </button>
               </div>
             </div>
 
-            {/* Signing as */}
-            <div style={{ marginBottom: '22px' }}>
-              <label style={labelSt}>
+            <div style={{ marginBottom:'22px' }}>
+              <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'6px' }}>
                 Signing in as (Analyst / Sampler)
               </label>
-              <input
-                type="text"
-                value={signingAs}
+              <input type="text" value={signingAs}
                 onChange={e => setSigningAs(e.target.value)}
                 placeholder="Your full name — leave blank if supervisor"
                 style={inputSt}
                 autoComplete="off"
               />
-              <p style={{
-                fontSize: '11px', color: '#9CA3AF',
-                margin: '5px 0 0',
-              }}>
-                Analysts and samplers type their name here for audit trail.
-                Supervisors leave this blank.
+              <p style={{ fontSize:'11px', color:'#9CA3AF', margin:'5px 0 0' }}>
+                Analysts and samplers type their name here. Supervisors leave blank.
               </p>
             </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
+            <button type="submit" disabled={loading}
               style={{
-                width: '100%',
-                background: loading
-                  ? '#A78BFA'
-                  : 'linear-gradient(135deg, #6B21A8, #7C3AED)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '14px',
-                fontSize: '15px',
-                fontWeight: '700',
+                width:'100%',
+                background: loading ? '#A78BFA' : 'linear-gradient(135deg, #6B21A8, #7C3AED)',
+                color:'#fff', border:'none', borderRadius:'12px',
+                padding:'14px', fontSize:'15px', fontWeight:'700',
                 cursor: loading ? 'not-allowed' : 'pointer',
-                fontFamily: 'inherit',
+                fontFamily:'inherit',
                 boxShadow: loading ? 'none' : '0 4px 12px rgba(124,58,237,0.35)',
-                transition: 'all 0.2s',
-              }}
-            >
+              }}>
               {loading ? 'Logging in...' : '🔐 Login to BUL QC'}
             </button>
 
           </form>
 
-          <p style={{
-            textAlign: 'center',
-            fontSize: '11px',
-            color: '#9CA3AF',
-            marginTop: '14px',
-          }}>
+          <p style={{ textAlign:'center', fontSize:'11px', color:'#9CA3AF', marginTop:'14px' }}>
             Sessions expire automatically after 12 hours
           </p>
-
         </div>
       </div>
 
-      {/* Bottom watermark */}
+      {/* Bottom watermark text */}
       <div style={{
-        position: 'fixed',
-        bottom: '10px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        fontSize: '11px',
-        color: '#DC2626',
-        fontWeight: '600',
-        zIndex: 1,
-        whiteSpace: 'nowrap',
+        position:'fixed', bottom:'10px', left:'50%',
+        transform:'translateX(-50%)',
+        fontSize:'12px', color:'#DC2626',
+        fontWeight:'700', zIndex:1, whiteSpace:'nowrap',
+        letterSpacing:'0.5px',
       }}>
-        Designed by SantosInfographics
+        Designed by SantosInfographics — BUL QC App v1.0.4
       </div>
-
     </div>
   );
 }

@@ -325,52 +325,92 @@ export default function SampleRegistrationPage() {
 
   // ── Shared sampler dropdown section ──────────────────────
   const SamplerSection = ({ value, onChange, customValue, onCustomChange, isCustom, onToggleCustom }) => (
-    <div style={{
-      background:'#F5F3FF', borderRadius:'12px',
-      border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
-    }}>
-      <label style={{ ...lbl, color:P, marginBottom:'8px' }}>✍️ Sampler Signature *</label>
-      <p style={{ fontSize:'12px', color:PM, marginBottom:'10px' }}>
-        Select the sampler who collected and brought this sample.
-      </p>
-      {!isCustom ? (
-        <>
-          <select value={value} onChange={e => onChange(e.target.value)} style={sel}>
-            <option value="">— Select Sampler —</option>
-            {samplers.map(s => (
-              <option key={s.id} value={s.full_name}>{s.full_name}</option>
-            ))}
-          </select>
-          <button type="button" style={linkBtn} onClick={() => onToggleCustom(true)}>
-            + Sampler not in list? Add them
+  <div style={{
+    background:'#F5F3FF', borderRadius:'12px',
+    border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
+  }}>
+    <label style={{ ...lbl, color:P, marginBottom:'8px', display:'block' }}>
+      ✍️ Sampler Signature *
+    </label>
+    <p style={{ fontSize:'12px', color:PM, marginBottom:'10px' }}>
+      Select the sampler who collected this sample.
+    </p>
+
+    {!isCustom ? (
+      <div>
+        <select
+          value={value}
+          onChange={e => {
+            e.stopPropagation();
+            onChange(e.target.value);
+          }}
+          style={sel}
+          size={1}
+        >
+          <option value="">— Select Sampler —</option>
+          {samplers.map(s => (
+            <option key={s.id} value={s.full_name}>
+              {s.full_name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          style={linkBtn}
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => onToggleCustom(true)}
+        >
+          + Sampler not in list? Add them
+        </button>
+      </div>
+    ) : (
+      <div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <input
+            type="text"
+            value={customValue}
+            onChange={e => onCustomChange(e.target.value)}
+            style={{ ...inp, flex:1 }}
+            placeholder="Enter sampler full name..."
+          />
+          <button
+            type="button"
+            style={addBtn}
+            onMouseDown={e => e.preventDefault()}
+            onClick={async () => {
+              const saved = await addNewSampler(customValue);
+              if (saved) {
+                onChange(saved);
+                onToggleCustom(false);
+                onCustomChange('');
+              }
+            }}
+          >
+            Save & Use
           </button>
-        </>
-      ) : (
-        <>
-          <div style={{ display:'flex', gap:'8px' }}>
-            <input type="text" value={customValue}
-              onChange={e => onCustomChange(e.target.value)}
-              style={{ ...inp, flex:1 }} placeholder="Enter sampler full name..." />
-            <button type="button" style={addBtn}
-              onClick={async () => {
-                const saved = await addNewSampler(customValue);
-                if (saved) { onChange(saved); onToggleCustom(false); onCustomChange(''); }
-              }}>
-              Save & Use
-            </button>
-          </div>
-          <button type="button" style={linkBtn} onClick={() => onToggleCustom(false)}>
-            ← Pick from list
-          </button>
-        </>
-      )}
-      {value && !isCustom && (
-        <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
-          ✅ Signed by: {value}
         </div>
-      )}
-    </div>
-  );
+        <button
+          type="button"
+          style={linkBtn}
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => onToggleCustom(false)}
+        >
+          ← Pick from list
+        </button>
+      </div>
+    )}
+
+    {value && !isCustom && (
+      <div style={{
+        marginTop:'10px', padding:'7px 10px',
+        background:'#EDE9FE', borderRadius:'8px',
+        fontSize:'13px', color:P, fontWeight:'600',
+      }}>
+        ✅ Signed by: {value}
+      </div>
+    )}
+  </div>
+);
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
