@@ -489,17 +489,25 @@ export default function SampleRegistrationPage() {
                 </div>
               )}
 
-              {/* LBD/HBD */}
-              {single.needsSub && (single.subtypes||[]).length > 0 && (
-                <div style={fld}>
-                  <label style={lbl}>Form *</label>
-                  <select value={single.subtypeId}
-                    onChange={e => setSingle(prev=>({...prev,subtypeId:e.target.value}))} style={sel}>
-                    <option value="">— LBD or HBD —</option>
-                    {(single.subtypes||[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-              )}
+              {/* LBD / HBD / IDP — filtered by sample type */}
+{single.needsSub && (single.subtypes||[]).length > 0 && (
+  <div style={fld}>
+    <label style={lbl}>Form *</label>
+    <select value={single.subtypeId}
+      onChange={e => setSingle(prev=>({...prev,subtypeId:e.target.value}))} style={sel}>
+      <option value="">— Select Form —</option>
+      {(single.subtypes||[])
+        .filter(sub => {
+          const typeName = ((single.types||[]).find(t=>t.id===single.typeId)?.name||'').toLowerCase();
+          if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
+          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD';
+          return true;
+        })
+        .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+      }
+    </select>
+  </div>
+)}
 
               {/* Brand */}
               {brands.length > 0 && (
@@ -759,17 +767,25 @@ export default function SampleRegistrationPage() {
                     </div>
                   )}
 
-                  {/* LBD/HBD */}
-                  {s.needsSub && (s.subtypes||[]).length > 0 && (
-                    <div style={fld}>
-                      <label style={lbl}>Form *</label>
-                      <select value={s.subtypeId}
-                        onChange={e => updateBulk(idx,'subtypeId',e.target.value)} style={sel}>
-                        <option value="">— LBD or HBD —</option>
-                        {(s.subtypes||[]).map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
-                      </select>
-                    </div>
-                  )}
+                  {/* LBD / HBD / IDP — filtered by sample type */}
+{s.needsSub && (s.subtypes||[]).length > 0 && (
+  <div style={fld}>
+    <label style={lbl}>Form *</label>
+    <select value={s.subtypeId}
+      onChange={e => updateBulk(idx,'subtypeId',e.target.value)} style={sel}>
+      <option value="">— Select Form —</option>
+      {(s.subtypes||[])
+        .filter(sub => {
+          const typeName = ((s.types||[]).find(t=>t.id===s.typeId)?.name||'').toLowerCase();
+          if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
+          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD';
+          return true;
+        })
+        .map(st => <option key={st.id} value={st.id}>{st.name}</option>)
+      }
+    </select>
+  </div>
+)}
 
                   {/* Batch number */}
                   <div style={{ marginBottom:0 }}>
