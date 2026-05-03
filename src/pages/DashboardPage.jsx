@@ -14,7 +14,7 @@ import { useAuth }             from '../context/AuthContext';
 import { samplesService }      from '../services/samples.service';
 import { lookupService }       from '../services/lookup.service';
 import { supabase }            from '../services/supabase';
-import { format, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { format }              from 'date-fns';
 
 const P  = '#6B21A8';
 const PM = '#7C3AED';
@@ -94,14 +94,14 @@ export default function DashboardPage() {
 
   // ── Stats — FIX midnight issue ────────────────────────────
   // Use startOfDay/endOfDay to correctly bracket today
-  const todayStart = startOfDay(new Date());
-  const todayEnd   = endOfDay(new Date());
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-  const todaySamples = samples.filter(s => {
-    if (!s.registered_at) return false;
-    const d = new Date(s.registered_at);
-    return isWithinInterval(d, { start: todayStart, end: todayEnd });
-  });
+const todaySamples = samples.filter(s => {
+  if (!s.registered_at) return false;
+  // Convert UTC timestamp to local date string for comparison
+  const localDate = format(new Date(s.registered_at), 'yyyy-MM-dd');
+  return localDate === todayStr;
+});
 
   const counts = {
     total      : samples.length,

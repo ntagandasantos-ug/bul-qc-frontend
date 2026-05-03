@@ -224,9 +224,11 @@ export default function RefDashboardPage() {
     return new Set(items.map(r => r.registered_samples?.id)).size;
   };
 
-  const todayCt = results.filter(r =>
-    r.registered_samples?.registered_at?.startsWith(today)
-  ).length;
+  const todayCt = results.filter(r => {
+  if (!r.registered_samples?.registered_at) return false;
+  const localDate = format(new Date(r.registered_samples.registered_at), 'yyyy-MM-dd');
+  return localDate === today;
+}).length;
 
   const initials = (user?.full_name||'?')
     .split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
