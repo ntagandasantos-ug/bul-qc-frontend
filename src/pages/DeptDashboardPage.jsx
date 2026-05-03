@@ -209,7 +209,7 @@ export default function DeptDashboardPage(){
             </div>
             <div>
               <div style={{fontWeight:'800',fontSize:'14px',lineHeight:1.1}}>
-                {user?.departments?.name||'Detergent'} QC
+                {user?.departments?.name||'Detergent'} Results Dashboard
               </div>
               <div style={{fontSize:'10px',color:'#DDD6FE'}}>Live Results</div>
             </div>

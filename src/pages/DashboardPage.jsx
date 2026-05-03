@@ -1,3 +1,8 @@
+// ============================================================
+// FILE: frontend/bul-qc-app/src/pages/DashboardPage.jsx
+// Professional sample tracking with department filter
+// ============================================================
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate }         from 'react-router-dom';
 import Navbar                  from '../components/Navbar';
@@ -7,24 +12,35 @@ import LoadingSpinner          from '../components/LoadingSpinner';
 import SupervisorNotifications from '../components/SupervisorNotifications';
 import { useAuth }             from '../context/AuthContext';
 import { samplesService }      from '../services/samples.service';
+import { lookupService }       from '../services/lookup.service';
 import { supabase }            from '../services/supabase';
-import { format }              from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+
+const P  = '#6B21A8';
+const PM = '#7C3AED';
+const PL = '#EDE9FE';
 
 export default function DashboardPage() {
   const [samples,      setSamples]      = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [fromDate,     setFromDate]     = useState(
-    format(new Date(), 'yyyy-MM-dd')
-  );
-  const [toDate,       setToDate]       = useState(
-    format(new Date(), 'yyyy-MM-dd')
-  );
+  const [deptFilter,   setDeptFilter]   = useState('all');
+  const [fromDate,     setFromDate]     = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [toDate,       setToDate]       = useState(format(new Date(), 'yyyy-MM-dd'));
   const [useRange,     setUseRange]     = useState(false);
-  const [refreshing,   setRefreshing]   = useState(false);
-  const { isDeptHead } = useAuth();
+  const [depts,        setDepts]        = useState([]);
+
+  const { isDeptHead, isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // Load departments for filter
+  useEffect(() => {
+    lookupService.getDepartments()
+      .then(d => setDepts(d || []))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -32,6 +48,7 @@ export default function DashboardPage() {
     try {
       const filters = {};
       if (statusFilter !== 'all') filters.status = statusFilter;
+      if (deptFilter   !== 'all') filters.department_id = deptFilter;
 
       if (useRange) {
         filters.fromDate = fromDate;
@@ -48,13 +65,14 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, fromDate, toDate, useRange]);
+  }, [statusFilter, deptFilter, fromDate, toDate, useRange]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime updates
   useEffect(() => {
     const sub = supabase
-      .channel('dash_samples')
+      .channel('dash_samples_v2')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'registered_samples' },
         () => load(true)
@@ -62,305 +80,275 @@ export default function DashboardPage() {
     return () => sub.unsubscribe();
   }, [load]);
 
+  // ── Search filter ─────────────────────────────────────────
   const filtered = samples.filter(s => {
+    if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
       s.sample_name?.toLowerCase().includes(q) ||
       s.sample_number?.toLowerCase().includes(q) ||
       s.sample_types?.name?.toLowerCase().includes(q) ||
-      s.brands?.name?.toLowerCase().includes(q)
+      s.departments?.name?.toLowerCase().includes(q)
     );
   });
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const todaySamples = samples.filter(s =>
-    s.registered_at?.startsWith(today)
-  );
+  // ── Stats — FIX midnight issue ────────────────────────────
+  // Use startOfDay/endOfDay to correctly bracket today
+  const todayStart = startOfDay(new Date());
+  const todayEnd   = endOfDay(new Date());
+
+  const todaySamples = samples.filter(s => {
+    if (!s.registered_at) return false;
+    const d = new Date(s.registered_at);
+    return isWithinInterval(d, { start: todayStart, end: todayEnd });
+  });
+
   const counts = {
-    all:         samples.length,
-    today:       todaySamples.length,
-    pending:     samples.filter(s => s.status === 'pending').length,
+    total      : samples.length,
+    today      : todaySamples.length,
+    pending    : samples.filter(s => s.status === 'pending').length,
     in_progress: samples.filter(s => s.status === 'in_progress').length,
-    complete:    samples.filter(s => s.status === 'complete').length,
+    complete   : samples.filter(s => s.status === 'complete').length,
   };
 
-  const statCard = (label, value, color, icon) => (
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  const inp = {
+    border:`1.5px solid ${PL}`, borderRadius:'9px',
+    padding:'8px 12px', fontSize:'13px',
+    fontFamily:'inherit', background:'#fff',
+    color:'#111827', outline:'none', boxSizing:'border-box',
+  };
+
+  const sel = {
+    ...inp, cursor:'pointer',
+    backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237C3AED' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+    backgroundRepeat:'no-repeat',
+    backgroundPosition:'right 10px center',
+    paddingRight:'32px', appearance:'none',
+  };
+
+  const statCard = (label, value, color, icon, sublabel) => (
     <div key={label} style={{
-      background: '#fff', borderRadius: '14px',
-      border: `2px solid ${color}22`,
-      padding: '12px', textAlign: 'center',
-      flex: '1', minWidth: '80px',
+      background:'#fff', borderRadius:'12px',
+      border:`2px solid ${color}18`,
+      padding:'12px 10px', textAlign:'center',
+      flex:'1', minWidth:'80px',
+      boxShadow:'0 1px 4px rgba(107,33,168,0.06)',
     }}>
-      <div style={{ fontSize: '22px', marginBottom: '2px' }}>{icon}</div>
-      <div style={{ fontSize: '22px', fontWeight: '800', color }}>{value}</div>
-      <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: '600' }}>
-        {label}
-      </div>
+      <div style={{ fontSize:'18px', marginBottom:'2px' }}>{icon}</div>
+      <div style={{ fontSize:'22px', fontWeight:'900', color, lineHeight:1 }}>{value}</div>
+      <div style={{ fontSize:'10px', color:'#6B7280', fontWeight:'600', marginTop:'3px' }}>{label}</div>
+      {sublabel && <div style={{ fontSize:'9px', color:'#9CA3AF', marginTop:'1px' }}>{sublabel}</div>}
     </div>
   );
 
-  const inputSt = {
-    border: '1.5px solid #E9D5FF', borderRadius: '10px',
-    padding: '9px 12px', fontSize: '13px',
-    fontFamily: 'inherit', background: '#fff',
-    color: '#111827', cursor: 'text',
-    boxSizing: 'border-box',
-  };
-
-  const dateRangeLabel = () => {
-    if (useRange) {
-      return `Showing ${filtered.length} sample(s) from ${fromDate} to ${toDate}`;
-    }
-    return `Showing ${filtered.length} sample(s) for ${
-      fromDate === today ? 'today' : fromDate
-    }`;
-  };
-
   return (
-    <div style={{ minHeight: '100vh', background: '#FAF5FF', paddingBottom: '60px' }}>
+    <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'56px' }}>
       <Navbar />
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
+      <div style={{ maxWidth:'960px', margin:'0 auto', padding:'16px 14px' }}>
 
-        {/* Page title */}
-        <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: '800',
-                       color: '#1F2937', margin: '0 0 2px' }}>
-            Sample Tracking
-          </h2>
-          <p style={{ fontSize: '12px', color: '#9CA3AF', margin: 0 }}>
-            {format(new Date(), 'EEEE, dd MMMM yyyy')}
-          </p>
+        {/* Page title row */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
+          <div>
+            <h2 style={{ fontSize:'18px', fontWeight:'800', color:'#1F2937', margin:'0 0 2px' }}>
+              Sample Tracking
+            </h2>
+            <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>
+              {format(new Date(), 'EEEE, dd MMMM yyyy')}
+            </p>
+          </div>
+          {!isDeptHead && (
+            <button onClick={() => navigate('/register-sample')} style={{
+              padding:'9px 18px',
+              background:`linear-gradient(135deg,${P},${PM})`,
+              color:'#fff', border:'none', borderRadius:'10px',
+              fontSize:'13px', fontWeight:'700',
+              cursor:'pointer', fontFamily:'inherit',
+              boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
+              display:'flex', alignItems:'center', gap:'6px',
+            }}>
+              + Register Sample
+            </button>
+          )}
         </div>
 
         {/* Supervisor notifications */}
         <SupervisorNotifications />
 
-        {/* Stats Row */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px',
-                      flexWrap: 'wrap' }}>
-          {statCard('All Loaded',  counts.all,         '#7C3AED', '🧪')}
-          {statCard('Today',       counts.today,        '#6B21A8', '📅')}
+        {/* Stats row */}
+        <div style={{ display:'flex', gap:'8px', marginBottom:'14px', flexWrap:'wrap' }}>
+          {statCard('All Loaded',  counts.total,       PM,        '🧪')}
+          {statCard('Today',       counts.today,        P,         '📅', 'registered today')}
           {statCard('Pending',     counts.pending,      '#6B7280', '⏳')}
           {statCard('In Progress', counts.in_progress,  '#EA580C', '🔬')}
           {statCard('Complete',    counts.complete,     '#16A34A', '✅')}
         </div>
 
-        {/* ── Date Filter Section ── */}
+        {/* ── Filter bar ── */}
         <div style={{
-          background: '#fff', borderRadius: '14px',
-          border: '1.5px solid #E9D5FF',
-          padding: '14px 16px', marginBottom: '12px',
+          background:'#fff', borderRadius:'14px',
+          border:`1.5px solid ${PL}`, padding:'14px 16px',
+          marginBottom:'12px',
+          boxShadow:'0 1px 4px rgba(107,33,168,0.06)',
         }}>
-          {/* Range toggle */}
-          <div style={{ display: 'flex', alignItems: 'center',
-                        gap: '10px', marginBottom: '12px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '700',
-                           color: '#4C1D95' }}>
-              📅 Date Filter:
-            </span>
-            <button
-              onClick={() => setUseRange(false)}
+
+          {/* Row 1: Search + Status + Department */}
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'10px' }}>
+
+            {/* Search */}
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 Search name, number or type..."
+              style={{ ...inp, flex:'2', minWidth:'180px', cursor:'text' }}
+            />
+
+            {/* Status filter */}
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...sel, flex:'1', minWidth:'130px' }}>
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="complete">Complete</option>
+            </select>
+
+            {/* Department filter — THE KEY NEW FEATURE */}
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} style={{ ...sel, flex:'1', minWidth:'150px' }}>
+              <option value="all">All Departments</option>
+              {depts.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+
+            {/* Refresh */}
+            <button onClick={() => load(true)} disabled={refreshing}
               style={{
-                padding: '4px 12px', borderRadius: '20px',
-                border: 'none', cursor: 'pointer',
-                fontSize: '12px', fontWeight: '600',
-                fontFamily: 'inherit',
-                background: !useRange ? '#7C3AED' : '#F3F4F6',
-                color: !useRange ? '#fff' : '#6B7280',
-              }}
-            >
-              Single Day
-            </button>
-            <button
-              onClick={() => setUseRange(true)}
-              style={{
-                padding: '4px 12px', borderRadius: '20px',
-                border: 'none', cursor: 'pointer',
-                fontSize: '12px', fontWeight: '600',
-                fontFamily: 'inherit',
-                background: useRange ? '#7C3AED' : '#F3F4F6',
-                color: useRange ? '#fff' : '#6B7280',
-              }}
-            >
-              Date Range
+                padding:'8px 12px', border:`1.5px solid ${PL}`,
+                borderRadius:'9px', background:'#fff',
+                cursor:'pointer', fontSize:'15px',
+              }}>
+              {refreshing ? '⏳' : '🔄'}
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px',
-                        flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* From date */}
-            <div style={{ flex: 1, minWidth: '140px' }}>
-              <label style={{ display: 'block', fontSize: '11px',
-                              fontWeight: '700', color: '#4C1D95',
-                              marginBottom: '4px' }}>
-                {useRange ? 'From Date' : 'Date'}
-              </label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
-                style={{ ...inputSt, width: '100%', cursor: 'pointer' }}
-              />
+          {/* Row 2: Date filter */}
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+
+            {/* Mode toggle */}
+            <div style={{ display:'flex', gap:'3px' }}>
+              {['Single Day', 'Date Range'].map((l, i) => (
+                <button key={l} type="button" onClick={() => setUseRange(i === 1)}
+                  style={{
+                    padding:'5px 11px', borderRadius:'8px', border:'none',
+                    cursor:'pointer', fontSize:'11px', fontWeight:'600',
+                    fontFamily:'inherit',
+                    background: (i === 1) === useRange ? PM : '#F3F4F6',
+                    color:      (i === 1) === useRange ? '#fff' : '#6B7280',
+                  }}>
+                  {l}
+                </button>
+              ))}
             </div>
 
-            {/* To date (only shown in range mode) */}
+            {/* From date */}
+            <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+              <span style={{ fontSize:'11px', color:'#6B7280', fontWeight:'600' }}>
+                {useRange ? 'From:' : 'Date:'}
+              </span>
+              <input type="date" value={fromDate}
+                onChange={e => setFromDate(e.target.value)}
+                style={{ ...inp, cursor:'pointer' }} />
+            </div>
+
+            {/* To date */}
             {useRange && (
-              <>
-                <div style={{
-                  fontSize: '18px', color: '#7C3AED',
-                  fontWeight: '700', alignSelf: 'flex-end',
-                  paddingBottom: '8px',
-                }}>
-                  →
-                </div>
-                <div style={{ flex: 1, minWidth: '140px' }}>
-                  <label style={{ display: 'block', fontSize: '11px',
-                                  fontWeight: '700', color: '#4C1D95',
-                                  marginBottom: '4px' }}>
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={e => setToDate(e.target.value)}
-                    min={fromDate}
-                    style={{ ...inputSt, width: '100%', cursor: 'pointer' }}
-                  />
-                </div>
-              </>
+              <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+                <span style={{ fontSize:'14px', color:PM, fontWeight:'700' }}>→</span>
+                <input type="date" value={toDate} min={fromDate}
+                  onChange={e => setToDate(e.target.value)}
+                  style={{ ...inp, cursor:'pointer' }} />
+              </div>
             )}
 
             {/* Quick date buttons */}
-            <div style={{ display: 'flex', gap: '6px',
-                          flexWrap: 'wrap', alignSelf: 'flex-end',
-                          paddingBottom: '2px' }}>
+            <div style={{ display:'flex', gap:'5px' }}>
               {[
-                { label: 'Today', from: today, to: today },
-                {
-                  label: 'Yesterday',
-                  from: format(new Date(Date.now()-86400000),'yyyy-MM-dd'),
-                  to:   format(new Date(Date.now()-86400000),'yyyy-MM-dd'),
-                },
-                {
-                  label: 'This Week',
-                  from: format(new Date(Date.now()-6*86400000),'yyyy-MM-dd'),
-                  to:   today,
-                },
+                { l:'Today',     f:today, t:today },
+                { l:'Yesterday', f:format(new Date(Date.now()-86400000),'yyyy-MM-dd'), t:format(new Date(Date.now()-86400000),'yyyy-MM-dd') },
+                { l:'This Week', f:format(new Date(Date.now()-6*86400000),'yyyy-MM-dd'), t:today },
               ].map(q => (
-                <button
-                  key={q.label}
-                  onClick={() => {
-                    setFromDate(q.from);
-                    setToDate(q.to);
-                    setUseRange(q.from !== q.to);
-                  }}
+                <button key={q.l} type="button"
+                  onClick={() => { setFromDate(q.f); setToDate(q.t); setUseRange(q.f !== q.t); }}
                   style={{
-                    padding: '5px 10px', borderRadius: '8px',
-                    border: '1.5px solid #E9D5FF',
-                    background: '#F5F3FF', color: '#6B21A8',
-                    fontSize: '11px', fontWeight: '600',
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {q.label}
+                    padding:'5px 9px', borderRadius:'8px',
+                    border:`1.5px solid ${PL}`, background:'#F5F3FF',
+                    color:P, fontSize:'11px', fontWeight:'600',
+                    cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap',
+                  }}>
+                  {q.l}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Search + Status + Refresh + Register */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap',
-                      marginBottom: '10px', alignItems: 'center' }}>
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="🔍 Search samples..."
-            style={{ ...inputSt, flex: '1', minWidth: '150px' }}
-          />
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{ ...inputSt, cursor: 'pointer' }}
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="in_progress">In Progress</option>
-            <option value="complete">Complete</option>
-          </select>
-          <button
-            onClick={() => load(true)}
-            disabled={refreshing}
-            style={{
-              padding: '9px 12px', borderRadius: '10px',
-              border: '1.5px solid #E9D5FF', background: '#fff',
-              cursor: 'pointer', fontSize: '16px',
-            }}
-          >
-            {refreshing ? '⏳' : '🔄'}
-          </button>
-          {!isDeptHead && (
-            <button
-              onClick={() => navigate('/register-sample')}
+        {/* Result count */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
+          <p style={{ fontSize:'12px', color:PM, fontWeight:'600', margin:0 }}>
+            {filtered.length} sample(s) shown
+            {deptFilter !== 'all' && ` · ${depts.find(d => d.id === deptFilter)?.name || ''}`}
+            {search && ` · "${search}"`}
+          </p>
+          {(deptFilter !== 'all' || statusFilter !== 'all' || search) && (
+            <button type="button"
+              onClick={() => { setDeptFilter('all'); setStatusFilter('all'); setSearch(''); }}
               style={{
-                padding: '9px 16px', borderRadius: '10px',
-                background: 'linear-gradient(135deg,#6B21A8,#7C3AED)',
-                color: '#fff', border: 'none',
-                fontSize: '13px', fontWeight: '700',
-                cursor: 'pointer', fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 8px rgba(124,58,237,0.3)',
-              }}
-            >
-              + Register Sample
+                padding:'3px 10px', borderRadius:'8px',
+                border:`1px solid ${PL}`, background:'#F5F3FF',
+                color:P, fontSize:'11px', fontWeight:'600',
+                cursor:'pointer', fontFamily:'inherit',
+              }}>
+              ✕ Clear filters
             </button>
           )}
         </div>
-
-        {/* Date range label */}
-        <p style={{ fontSize: '12px', color: '#7C3AED',
-                    fontWeight: '600', marginBottom: '12px' }}>
-          {dateRangeLabel()}
-        </p>
 
         {/* Sample list */}
         {loading ? (
           <LoadingSpinner text="Loading samples..." />
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🧪</div>
-            <p style={{ color: '#6B7280', fontWeight: '600', fontSize: '15px' }}>
+          <div style={{
+            textAlign:'center', padding:'60px 20px',
+            background:'#fff', borderRadius:'14px',
+            border:`1.5px solid ${PL}`,
+          }}>
+            <div style={{ fontSize:'48px', marginBottom:'12px' }}>🧪</div>
+            <p style={{ color:'#374151', fontWeight:'700', fontSize:'15px' }}>
               No samples found
             </p>
-            <p style={{ color: '#9CA3AF', fontSize: '13px', marginTop: '4px' }}>
+            <p style={{ color:'#9CA3AF', fontSize:'13px', marginTop:'5px' }}>
               {samples.length === 0
-                ? 'Register the first sample for this period'
-                : 'Try different search or date range'}
+                ? 'No samples registered for this period'
+                : 'Try adjusting your filters or date range'}
             </p>
-            {!isDeptHead && (
-              <button
-                onClick={() => navigate('/register-sample')}
-                style={{
-                  marginTop: '16px', padding: '12px 24px',
-                  background: '#7C3AED', color: '#fff',
-                  border: 'none', borderRadius: '12px',
-                  fontSize: '14px', fontWeight: '600',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                + Register Sample
+            {!isDeptHead && samples.length === 0 && (
+              <button onClick={() => navigate('/register-sample')} style={{
+                marginTop:'16px', padding:'11px 22px',
+                background:PM, color:'#fff', border:'none',
+                borderRadius:'11px', fontSize:'14px',
+                fontWeight:'600', cursor:'pointer', fontFamily:'inherit',
+              }}>
+                + Register First Sample
               </button>
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             {filtered.map(s => <SampleCard key={s.id} sample={s} />)}
-            <p style={{ textAlign: 'center', fontSize: '11px',
-                        color: '#9CA3AF', paddingTop: '8px' }}>
-              {filtered.length} of {samples.length} samples shown
+            <p style={{ textAlign:'center', fontSize:'11px', color:'#9CA3AF', paddingTop:'6px' }}>
+              Showing {filtered.length} of {samples.length} samples
             </p>
           </div>
         )}
