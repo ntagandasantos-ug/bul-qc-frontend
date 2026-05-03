@@ -324,93 +324,7 @@ export default function SampleRegistrationPage() {
   });
 
   // ── Shared sampler dropdown section ──────────────────────
-  const SamplerSection = ({ value, onChange, customValue, onCustomChange, isCustom, onToggleCustom }) => (
-  <div style={{
-    background:'#F5F3FF', borderRadius:'12px',
-    border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
-  }}>
-    <label style={{ ...lbl, color:P, marginBottom:'8px', display:'block' }}>
-      ✍️ Sampler Signature *
-    </label>
-    <p style={{ fontSize:'12px', color:PM, marginBottom:'10px' }}>
-      Select the sampler who collected this sample.
-    </p>
-
-    {!isCustom ? (
-      <div>
-        <select
-          value={value}
-          onChange={e => {
-            e.stopPropagation();
-            onChange(e.target.value);
-          }}
-          style={sel}
-          size={1}
-        >
-          <option value="">— Select Sampler —</option>
-          {samplers.map(s => (
-            <option key={s.id} value={s.full_name}>
-              {s.full_name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          style={linkBtn}
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => onToggleCustom(true)}
-        >
-          + Sampler not in list? Add them
-        </button>
-      </div>
-    ) : (
-      <div>
-        <div style={{ display:'flex', gap:'8px' }}>
-          <input
-            type="text"
-            value={customValue}
-            onChange={e => onCustomChange(e.target.value)}
-            style={{ ...inp, flex:1 }}
-            placeholder="Enter sampler full name..."
-          />
-          <button
-            type="button"
-            style={addBtn}
-            onMouseDown={e => e.preventDefault()}
-            onClick={async () => {
-              const saved = await addNewSampler(customValue);
-              if (saved) {
-                onChange(saved);
-                onToggleCustom(false);
-                onCustomChange('');
-              }
-            }}
-          >
-            Save & Use
-          </button>
-        </div>
-        <button
-          type="button"
-          style={linkBtn}
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => onToggleCustom(false)}
-        >
-          ← Pick from list
-        </button>
-      </div>
-    )}
-
-    {value && !isCustom && (
-      <div style={{
-        marginTop:'10px', padding:'7px 10px',
-        background:'#EDE9FE', borderRadius:'8px',
-        fontSize:'13px', color:P, fontWeight:'600',
-      }}>
-        ✅ Signed by: {value}
-      </div>
-    )}
-  </div>
-);
+ 
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
@@ -615,15 +529,77 @@ export default function SampleRegistrationPage() {
               </div>
             </div>
 
-            {/* Sampler */}
-            <SamplerSection
-              value={single.samplerName}
-              onChange={v => setSingle(prev=>({...prev,samplerName:v}))}
-              customValue={single.customSampler}
-              onCustomChange={v => setSingle(prev=>({...prev,customSampler:v}))}
-              isCustom={single.isCustomSamp}
-              onToggleCustom={v => setSingle(prev=>({...prev,isCustomSamp:v}))}
-            />
+            {/* ── Sampler Signature ── */}
+<div style={{
+  background:'#F5F3FF', borderRadius:'12px',
+  border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
+}}>
+  <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
+    ✍️ Sampler Signature *
+  </div>
+  <p style={{ fontSize:'12px', color:PM, marginBottom:'10px', margin:'0 0 10px' }}>
+    Select the sampler who collected this sample.
+  </p>
+
+  {!single.isCustomSamp ? (
+    <>
+      <select
+        value={single.samplerName}
+        onChange={e => setSingle(prev => ({ ...prev, samplerName: e.target.value }))}
+        style={sel}
+      >
+        <option value="">— Select Sampler —</option>
+        {samplers.map(s => (
+          <option key={s.id} value={s.full_name}>{s.full_name}</option>
+        ))}
+      </select>
+      {single.samplerName && (
+        <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
+          ✅ Signed by: {single.samplerName}
+        </div>
+      )}
+      <button
+        type="button"
+        style={linkBtn}
+        onClick={() => setSingle(prev => ({ ...prev, isCustomSamp: true }))}
+      >
+        + Sampler not in list? Add them
+      </button>
+    </>
+  ) : (
+    <>
+      <div style={{ display:'flex', gap:'8px' }}>
+        <input
+          type="text"
+          value={single.customSampler}
+          onChange={e => setSingle(prev => ({ ...prev, customSampler: e.target.value }))}
+          style={{ ...inp, flex:1 }}
+          placeholder="Enter sampler full name..."
+        />
+        <button
+          type="button"
+          style={addBtn}
+          onClick={async () => {
+            const saved = await addNewSampler(single.customSampler);
+            if (saved) setSingle(prev => ({
+              ...prev, samplerName: saved,
+              isCustomSamp: false, customSampler: '',
+            }));
+          }}
+        >
+          Save & Use
+        </button>
+      </div>
+      <button
+        type="button"
+        style={linkBtn}
+        onClick={() => setSingle(prev => ({ ...prev, isCustomSamp: false }))}
+      >
+        ← Pick from list
+      </button>
+    </>
+  )}
+</div>
 
             <button type="submit" disabled={submitting} style={primaryBtn(submitting)}>
               {submitting ? 'Registering...' : '🧪 Register Sample'}
@@ -637,15 +613,75 @@ export default function SampleRegistrationPage() {
         {mode === 'bulk' && deptId && (
           <form onSubmit={submitBulk}>
 
-            {/* Shared sampler for all samples in bulk */}
-            <SamplerSection
-              value={bulkSampler}
-              onChange={setBulkSampler}
-              customValue={bulkCustomSampler}
-              onCustomChange={setBulkCustomSampler}
-              isCustom={addingBulkSampler}
-              onToggleCustom={setAddingBulkSampler}
-            />
+            {/* ── Bulk Sampler Signature ── */}
+<div style={{
+  background:'#F5F3FF', borderRadius:'12px',
+  border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
+}}>
+  <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
+    ✍️ Sampler Signature * (applies to all samples below)
+  </div>
+
+  {!addingBulkSampler ? (
+    <>
+      <select
+        value={bulkSampler}
+        onChange={e => setBulkSampler(e.target.value)}
+        style={sel}
+      >
+        <option value="">— Select Sampler —</option>
+        {samplers.map(s => (
+          <option key={s.id} value={s.full_name}>{s.full_name}</option>
+        ))}
+      </select>
+      {bulkSampler && (
+        <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
+          ✅ Signed by: {bulkSampler}
+        </div>
+      )}
+      <button
+        type="button"
+        style={linkBtn}
+        onClick={() => setAddingBulkSampler(true)}
+      >
+        + Sampler not in list? Add them
+      </button>
+    </>
+  ) : (
+    <>
+      <div style={{ display:'flex', gap:'8px' }}>
+        <input
+          type="text"
+          value={bulkCustomSampler}
+          onChange={e => setBulkCustomSampler(e.target.value)}
+          style={{ ...inp, flex:1 }}
+          placeholder="Enter sampler full name..."
+        />
+        <button
+          type="button"
+          style={addBtn}
+          onClick={async () => {
+            const saved = await addNewSampler(bulkCustomSampler);
+            if (saved) {
+              setBulkSampler(saved);
+              setAddingBulkSampler(false);
+              setBulkCustomSampler('');
+            }
+          }}
+        >
+          Save & Use
+        </button>
+      </div>
+      <button
+        type="button"
+        style={linkBtn}
+        onClick={() => setAddingBulkSampler(false)}
+      >
+        ← Pick from list
+      </button>
+    </>
+  )}
+</div>
 
             {/* Sample rows */}
             <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'16px' }}>
