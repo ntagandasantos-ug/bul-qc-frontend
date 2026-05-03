@@ -113,7 +113,7 @@ export default function DeptDashboardPage(){
   useEffect(()=>{
     const sub=supabase.channel('det_live_v6')
       .on('postgres_changes',
-        {event:'UPDATE',schema:'public',table:'sample_test_assignments'},
+        {event:'*',schema:'public',table:'sample_test_assignments'},
         (p)=>{
           load(true);
           const oos=p.new.result_status==='fail_low'||p.new.result_status==='fail_high';
@@ -211,7 +211,7 @@ export default function DeptDashboardPage(){
               <div style={{fontWeight:'800',fontSize:'14px',lineHeight:1.1}}>
                 {user?.departments?.name||'Detergent'} Results Dashboard
               </div>
-              <div style={{fontSize:'10px',color:'#DDD6FE'}}>Live Results</div>
+              <div style={{fontSize:'10px',color:'#DDD6FE'}}>Live QC Results</div>
             </div>
           </div>
 
