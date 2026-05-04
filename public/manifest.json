@@ -1,7 +1,7 @@
 {
-  "short_name": "BUL QC",
+  "short_name": "BUL QC App",
   "name": "BUL QC App - LIMS",
-  "description": "Laboratory Information Management System for BUL Quality Control",
+  "description": "Laboratory Information Management System for BUL Industries",
   "icons": [
     {
       "src": "favicon.ico",
@@ -11,8 +11,7 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
+      "sizes": "192x192"
     },
     {
       "src": "logo512.png",
@@ -20,12 +19,9 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/",
-  "scope": "/",
+  "start_url": ".",
   "display": "standalone",
-  "theme_color": "#003087",
-  "background_color": "#003087",
-  "orientation": "portrait-primary",
-  "categories": ["business", "productivity", "utilities"],
-  "lang": "en"
+  "theme_color": "#6B21A8",
+  "background_color": "#6B21A8",
+  "orientation": "any"
 }
