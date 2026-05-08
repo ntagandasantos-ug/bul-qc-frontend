@@ -27,14 +27,17 @@ export default function LoginPage() {
   }, [user]);
 
   const redirectByRole = (u) => {
-    const role     = u.roles?.name;
-    const deptCode = u.departments?.code;
-    if (role === 'Department Head' || role === 'Department Assistant') {
-      navigate(deptCode === 'REF' ? '/dashboard/ref' : '/dashboard/dept', { replace: true });
-    } else {
-      navigate('/dashboard', { replace: true });
-    }
-  };
+  const role     = u.roles?.name;
+  const deptCode = u.departments?.code;
+
+  if (role === 'Department Head' || role === 'Department Assistant') {
+    if      (deptCode === 'REF') navigate('/dashboard/ref', { replace: true });
+    else if (deptCode === 'FP')  navigate('/dashboard/fp',  { replace: true });
+    else                         navigate('/dashboard/dept', { replace: true });
+  } else {
+    navigate('/dashboard', { replace: true });
+  }
+};
 
   const handleLogin = async (e) => {
     e.preventDefault();
