@@ -2,6 +2,7 @@ import React        from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import { AuthProvider }          from './context/AuthContext';
+import { useAuth }               from './context/AuthContext';
 import ProtectedRoute            from './components/ProtectedRoute';
 
 import LoginPage                 from './pages/LoginPage';
@@ -17,6 +18,18 @@ import SoapDashboardPage         from './pages/SoapDashboardPage';
 import QCHeadDashboardPage       from './pages/QCHeadDashboardPage';
 import ReportBooksPage           from './pages/ReportBooksPage';
 
+// ── Role-based dashboard selector ────────────────────────
+// QC Head and QC Assistant → new QC Head Dashboard
+// Everyone else           → old Sample Tracking Dashboard
+function RoleBasedDashboard() {
+  const { user } = useAuth();
+  const role = user?.roles?.name || '';
+  if (role === 'QC Head' || role === 'QC Assistant') {
+    return <QCHeadDashboardPage />;
+  }
+  return <DashboardPage />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -26,13 +39,13 @@ export default function App() {
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* QC staff dashboard */}
+          {/* Main dashboard — role decides which page shows */}
           <Route path="/dashboard" element={
             <ProtectedRoute roles={[
               'QC Head','QC Assistant',
               'Shift Supervisor','Analyst','Sampler',
             ]}>
-              <DashboardPage />
+              <RoleBasedDashboard />
             </ProtectedRoute>
           } />
 
@@ -56,59 +69,53 @@ export default function App() {
             </ProtectedRoute>
           } />
 
-          {/* Department live dashboard */}
+          {/* Department live dashboards */}
           <Route path="/dashboard/dept" element={
-            <ProtectedRoute roles={[
-              'Department Head','Department Assistant',
-            ]}>
+            <ProtectedRoute roles={['Department Head','Department Assistant']}>
               <DeptDashboardPage />
             </ProtectedRoute>
           } />
 
           <Route path="/dashboard/ref" element={
-  <ProtectedRoute roles={['Department Head','Department Assistant']}>
-    <RefDashboardPage />
-  </ProtectedRoute>
-} />
+            <ProtectedRoute roles={['Department Head','Department Assistant']}>
+              <RefDashboardPage />
+            </ProtectedRoute>
+          } />
 
-<Route path="/dashboard/fp" element={
-  <ProtectedRoute roles={['Department Head','Department Assistant']}>
-    <FPDashboardPage />
-  </ProtectedRoute>
-} />
+          <Route path="/dashboard/fp" element={
+            <ProtectedRoute roles={['Department Head','Department Assistant']}>
+              <FPDashboardPage />
+            </ProtectedRoute>
+          } />
 
-<Route path="/dashboard/soap" element={
-  <ProtectedRoute roles={['Department Head','Department Assistant']}>
-    <SoapDashboardPage />
-  </ProtectedRoute>
-} />
+          <Route path="/dashboard/soap" element={
+            <ProtectedRoute roles={['Department Head','Department Assistant']}>
+              <SoapDashboardPage />
+            </ProtectedRoute>
+          } />
 
-<Route path="/dashboard" element={
-  <ProtectedRoute>
-    <QCHeadDashboardPage />
-  </ProtectedRoute>
-} />
+          {/* Report books */}
+          <Route path="/report-books" element={
+            <ProtectedRoute roles={['QC Head','QC Assistant']}>
+              <ReportBooksPage />
+            </ProtectedRoute>
+          } />
 
-<Route path="/report-books" element={
-  <ProtectedRoute roles={['QC Head','QC Assistant']}>
-    <ReportBooksPage />
-  </ProtectedRoute>
-} />
+          {/* Reports */}
+          <Route path="/reports" element={
+            <ProtectedRoute roles={['QC Head','QC Assistant']}>
+              <ReportsPage />
+            </ProtectedRoute>
+          } />
 
-           <Route path="/reports" element={
-    <ProtectedRoute roles={['QC Head','QC Assistant']}>
-      <ReportsPage />
-    </ProtectedRoute>
-  } />
-
-          {/* Admin panel */}
+          {/* Admin */}
           <Route path="/admin" element={
             <ProtectedRoute roles={['QC Head','QC Assistant']}>
               <AdminPage />
             </ProtectedRoute>
           } />
 
-          {/* Redirect root to dashboard */}
+          {/* Redirects */}
           <Route path="/"  element={<Navigate to="/dashboard" replace />} />
           <Route path="*"  element={<Navigate to="/login"     replace />} />
 
