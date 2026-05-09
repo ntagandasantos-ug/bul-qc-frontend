@@ -448,7 +448,28 @@ export default function SoapDashboardPage() {
                                       {p.result_status==='fail_low'?'LOW':p.result_status==='fail_high'?'HIGH':(p.result_status==='pass'||p.result_status==='ok')?'OK':''}
                                     </span>
                                   </div>
-                                  {p.submitted_at&&(
+                                  {/* Per-sample spec — only shows when brands have different specs */}
+{!tMeta[testName]?.allSame && (() => {
+  const specs = p.tests?.test_specifications || [];
+  const spec  = specs.find(s=>!s.brand_id&&!s.subtype_id)||specs[0]||null;
+  const specStr = spec?.display_spec
+    ? spec.display_spec
+    : (spec?.min_value!==undefined&&spec?.max_value!==undefined)
+      ? `${spec.min_value}–${spec.max_value}` : null;
+  return specStr ? (
+    <div style={{
+      marginTop:'4px', fontSize:'10px',
+      color:'#FFB81C', fontWeight:'700',
+      background:'rgba(255,184,28,0.08)',
+      borderRadius:'5px', padding:'2px 6px',
+      display:'inline-block',
+      border:'1px solid rgba(255,184,28,0.25)',
+    }}>
+      ({specStr}) {m.unit}
+    </div>
+  ) : null;
+})()}
+                                    {p.submitted_at&&(
                                     <div style={{marginTop:'4px',background:'#F9FAFB',borderRadius:'5px',padding:'3px 6px',display:'inline-block',border:'1px solid #E5E7EB'}}>
                                       <div style={{fontSize:'10px',color:'#374151',fontWeight:'700'}}>{format(new Date(p.submitted_at),'dd/MM/yy')}</div>
                                       <div style={{fontSize:'11px',color:PM,fontWeight:'800',fontFamily:'monospace'}}>{format(new Date(p.submitted_at),'HH:mm')}</div>
