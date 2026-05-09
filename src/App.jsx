@@ -13,6 +13,7 @@ import RefDashboardPage          from './pages/RefDashboardPage';
 import AdminPage                 from './pages/AdminPage';
 import ReportsPage               from './pages/ReportsPage';
 import FPDashboardPage           from './pages/FPDashboardPage';
+import SoapDashboardPage         from './pages/SoapDashboardPage';
 
 export default function App() {
   return (
@@ -71,6 +72,12 @@ export default function App() {
 <Route path="/dashboard/fp" element={
   <ProtectedRoute roles={['Department Head','Department Assistant']}>
     <FPDashboardPage />
+  </ProtectedRoute>
+} />
+
+<Route path="/dashboard/soap" element={
+  <ProtectedRoute roles={['Department Head','Department Assistant']}>
+    <SoapDashboardPage />
   </ProtectedRoute>
 } />
 
