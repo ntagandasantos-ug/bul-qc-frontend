@@ -14,6 +14,8 @@ import AdminPage                 from './pages/AdminPage';
 import ReportsPage               from './pages/ReportsPage';
 import FPDashboardPage           from './pages/FPDashboardPage';
 import SoapDashboardPage         from './pages/SoapDashboardPage';
+import QCHeadDashboardPage       from './pages/QCHeadDashboardPage';
+import ReportBooksPage           from './pages/ReportBooksPage';
 
 export default function App() {
   return (
@@ -78,6 +80,18 @@ export default function App() {
 <Route path="/dashboard/soap" element={
   <ProtectedRoute roles={['Department Head','Department Assistant']}>
     <SoapDashboardPage />
+  </ProtectedRoute>
+} />
+
+<Route path="/dashboard" element={
+  <ProtectedRoute>
+    <QCHeadDashboardPage />
+  </ProtectedRoute>
+} />
+
+<Route path="/report-books" element={
+  <ProtectedRoute roles={['QC Head','QC Assistant']}>
+    <ReportBooksPage />
   </ProtectedRoute>
 } />
 
