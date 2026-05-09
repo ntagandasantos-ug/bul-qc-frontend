@@ -5,6 +5,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://bul-qc-backend.onrender.com/api';
 
 let bulqcLogo  = null;
 let santosLogo = null;
@@ -21,10 +23,34 @@ export default function LoginPage() {
   const [showPw,    setShowPw]    = useState(false);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
+  const [serverReady, setServerReady] = useState(false);
+  const [waking,      setWaking]      = useState(false);
 
   useEffect(() => {
     if (user) redirectByRole(user);
   }, [user]);
+  useEffect(() => {
+  const warmUp = async () => {
+    try {
+      await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
+      setServerReady(true);
+    } catch {
+      setWaking(true);
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
+          setServerReady(true);
+          setWaking(false);
+          return;
+        } catch {}
+      }
+      setWaking(false);
+      setServerReady(true);
+    }
+  };
+  warmUp();
+}, []);
 
   const redirectByRole = (u) => {
   const role     = u.roles?.name;
@@ -94,6 +120,25 @@ export default function LoginPage() {
       display:'flex', alignItems:'center', justifyContent:'center',
       padding:'20px', position:'relative', overflow:'hidden',
     }}>
+
+      {waking && (
+  <div style={{
+    position   : 'fixed',
+    top        : 0,
+    left       : 0,
+    width      : '100%',
+    background : '#FFF7ED',
+    borderBottom: '2px solid #FED7AA',
+    padding    : '10px 16px',
+    textAlign  : 'center',
+    fontSize   : '13px',
+    color      : '#EA580C',
+    fontWeight : '600',
+    zIndex     : 20,
+  }}>
+    ⏳ Waking up server — first load of the day takes about 30 seconds. Please wait...
+  </div>
+)}
 
       {/* ── Watermark — clearly visible red ── */}
       <div style={{
