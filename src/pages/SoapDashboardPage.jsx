@@ -187,18 +187,31 @@ export default function SoapDashboardPage() {
   }
 
   const allTests=[]; const seenT=new Set(); const tMeta={};
-  for(const row of rows){
-    const sorted=[...row.params].sort((a,b)=>(a.tests?.display_order||0)-(b.tests?.display_order||0));
-    for(const p of sorted){
-      const name=p.tests?.name; if(!name||seenT.has(name)) continue;
+
+for(const row of rows){
+  const sorted=[...row.params].sort((a,b)=>(a.tests?.display_order||0)-(b.tests?.display_order||0));
+  for(const p of sorted){
+    const name=p.tests?.name; if(!name) continue;
+    const specs=p.tests?.test_specifications||[];
+    const spec=specs.find(s=>!s.brand_id&&!s.subtype_id)||specs[0]||null;
+    const specStr=spec?.display_spec
+      ?spec.display_spec
+      :(spec?.min_value!==undefined&&spec?.max_value!==undefined)
+        ?`${spec.min_value}–${spec.max_value}`:null;
+
+    if(!seenT.has(name)){
       seenT.add(name);
-      const specs=p.tests?.test_specifications||[];
-      const spec=specs.find(s=>!s.brand_id&&!s.subtype_id)||specs[0]||null;
-      const specStr=spec?.display_spec?spec.display_spec:(spec?.min_value!==undefined&&spec?.max_value!==undefined)?`${spec.min_value}–${spec.max_value}`:null;
-      tMeta[name]={unit:p.tests?.unit||'',spec:specStr};
+      tMeta[name]={ unit:p.tests?.unit||'', spec:specStr, allSame:true };
       allTests.push(name);
+    } else {
+      // If this row has a different spec, mark as not all same
+      if(tMeta[name].spec !== specStr){
+        tMeta[name].allSame = false;
+        tMeta[name].spec    = null;
+      }
     }
   }
+}
 
   const countForTab=(tabKey)=>{
     const tc=TABS.find(t=>t.key===tabKey);
@@ -384,8 +397,14 @@ export default function SoapDashboardPage() {
                       return(
                         <th key={name} style={{position:'sticky',top:0,zIndex:70,width:`${TEST_W}px`,minWidth:`${TEST_W}px`,padding:'8px 6px 10px',textAlign:'center',verticalAlign:'middle',background:HEAD_BG,borderLeft:'2px solid rgba(255,255,255,0.2)',borderBottom:'3px solid rgba(255,255,255,0.4)'}}>
                           <div style={{fontWeight:'800',fontSize:'13px',color:G,lineHeight:1.2}}>{name}</div>
-                          {m.spec&&<div style={{fontSize:'11px',color:G,fontWeight:'600',marginTop:'2px',lineHeight:1.2}}>({m.spec}){m.unit&&<span style={{marginLeft:'2px'}}>{m.unit}</span>}</div>}
-                          {!m.spec&&m.unit&&<div style={{fontSize:'11px',color:G,fontWeight:'600',marginTop:'2px'}}>[{m.unit}]</div>}
+                          {m.spec && m.allSame !== false && (
+  <div style={{fontSize:'11px',color:G,fontWeight:'600',marginTop:'2px',lineHeight:1.2}}>
+    ({m.spec}){m.unit&&<span style={{marginLeft:'2px'}}>{m.unit}</span>}
+  </div>
+)}
+{!m.spec&&m.unit&&(
+  <div style={{fontSize:'11px',color:G,fontWeight:'600',marginTop:'2px'}}>[{m.unit}]</div>
+)}
                         </th>
                       );
                     })}
