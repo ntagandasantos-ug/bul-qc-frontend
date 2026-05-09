@@ -226,8 +226,8 @@ export default function SoapDashboardPage() {
               {bulqcLogo?<img src={bulqcLogo} alt="BUL QC" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',background:G}}/>}
             </div>
             <div>
-              <div style={{fontWeight:'800',fontSize:'14px',lineHeight:1.1}}>Soap QC Dashboard</div>
-              <div style={{fontSize:'10px',color:'#DDD6FE'}}>Live Results Feed</div>
+              <div style={{fontWeight:'800',fontSize:'14px',lineHeight:1.1}}>Soap Results Dashboard</div>
+              <div style={{fontSize:'10px',color:'#DDD6FE'}}>Live QC Results</div>
             </div>
           </div>
 
