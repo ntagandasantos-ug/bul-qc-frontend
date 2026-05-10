@@ -10,6 +10,8 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.15.0",
     "date-fns": "^4.1.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^1.8.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -17,7 +19,8 @@
     "react-scripts": "5.0.1",
     "react-toastify": "^11.0.5",
     "recharts": "^3.8.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "react-scripts start",
