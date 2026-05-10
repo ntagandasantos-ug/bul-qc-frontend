@@ -3,11 +3,11 @@
 // UPDATED: Assign Sample, professional Reports & Admin menus
 // ============================================================
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth }      from '../context/AuthContext';
-import NotificationBell from './NotificationBell';
-import { supabase }     from '../services/supabase';
+import { useAuth }          from '../context/AuthContext';
+import NotificationBell     from './NotificationBell';
+import AssignSampleModal    from './AssignSampleModal';
 
 let bulqcLogo  = null;
 let santosLogo = null;
@@ -52,19 +52,9 @@ export default function Navbar() {
   const [showAssign,  setShowAssign]  = useState(false);
   const [avatar,      setAvatar]      = useState(() => localStorage.getItem('bul_qc_avatar_'+(user?.id||'g')));
 
-  const [samples,     setSamples]     = useState([]);
-  const [analysts,    setAnalysts]    = useState([]);
-  const [selSample,   setSelSample]   = useState('');
-  const [selAnalyst,  setSelAnalyst]  = useState('');
-  const [assignNote,  setAssignNote]  = useState('');
-  const [assigning,   setAssigning]   = useState(false);
-  const [assignDone,  setAssignDone]  = useState(false);
-  const [loadingData, setLoadingData] = useState(false);
-
   const fileRef    = useRef(null);
   const reportsRef = useRef(null);
   const adminRef   = useRef(null);
-  const assignRef  = useRef(null);
 
   const role     = user?.roles?.name || '';
   const isQCHead = role === 'QC Head' || role === 'QC Assistant';
@@ -74,59 +64,13 @@ export default function Navbar() {
     const h = (e) => {
       if (reportsRef.current && !reportsRef.current.contains(e.target)) setShowReports(false);
       if (adminRef.current   && !adminRef.current.contains(e.target))   setShowAdmin(false);
-      if (assignRef.current  && !assignRef.current.contains(e.target))  { /* modal uses backdrop */ }
       if (!e.target.closest?.('.avatar-zone')) setShowAvatar(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const loadAssignData = useCallback(async () => {
-    setLoadingData(true);
-    try {
-      const { data: sData } = await supabase
-        .from('registered_samples')
-        .select('id, sample_name, sample_number, departments(name)')
-        .in('status', ['pending','in_progress'])
-        .order('registered_at', { ascending: false })
-        .limit(40);
-      setSamples(sData || []);
-
-      const { data: aData } = await supabase
-        .from('app_users')
-        .select('id, full_name, roles(name)')
-        .order('full_name');
-      setAnalysts((aData||[]).filter(a => !['QC Head','QC Assistant'].includes(a.roles?.name)));
-    } catch(e) { console.error(e); }
-    finally { setLoadingData(false); }
-  }, []);
-
-  const openAssign = () => {
-    setShowAssign(true);
-    setAssignDone(false);
-    setSelSample('');
-    setSelAnalyst('');
-    setAssignNote('');
-    loadAssignData();
-  };
-
-  const handleAssign = async () => {
-    if (!selSample || !selAnalyst) return;
-    setAssigning(true);
-    try {
-      await supabase.from('analyst_assignments').insert({
-        sample_id  : selSample,
-        assigned_to: selAnalyst,
-        assigned_by: user?.id,
-        notes      : assignNote.trim() || null,
-        assigned_at: new Date().toISOString(),
-      });
-      setAssignDone(true);
-      setTimeout(() => setShowAssign(false), 2500);
-    } catch(e) { console.error(e); }
-    finally { setAssigning(false); }
-  };
-
+  const openAssign = () => setShowAssign(true);
   const uploadAvatar = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
     const r = new FileReader();
@@ -262,73 +206,7 @@ export default function Navbar() {
       </nav>
 
       {/* ── ASSIGN SAMPLE MODAL ── */}
-      {showAssign && (
-        <div onClick={e => { if(e.target===e.currentTarget) setShowAssign(false); }}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
-          <div style={{ background:'#fff', borderRadius:'18px', maxWidth:'500px', width:'100%', boxShadow:'0 24px 80px rgba(0,0,0,0.3)', overflow:'hidden' }}>
-
-            <div style={{ background:`linear-gradient(135deg,${P},${PM})`, padding:'18px 24px', color:'#fff' }}>
-              <div style={{ fontWeight:'900', fontSize:'16px', marginBottom:'3px' }}>👤 Assign Sample to Analyst</div>
-              <div style={{ fontSize:'12px', color:'#DDD6FE' }}>Allocate a pending sample to a specific analyst for analysis</div>
-            </div>
-
-            <div style={{ padding:'24px' }}>
-              {assignDone ? (
-                <div style={{ textAlign:'center', padding:'20px' }}>
-                  <div style={{ fontSize:'48px', marginBottom:'12px' }}>✅</div>
-                  <div style={{ fontWeight:'800', color:'#16A34A', fontSize:'16px' }}>Assignment saved successfully</div>
-                  <div style={{ fontSize:'13px', color:'#6B7280', marginTop:'6px' }}>Supervisor will be notified to brief the analyst</div>
-                </div>
-              ) : loadingData ? (
-                <div style={{ textAlign:'center', padding:'24px', color:'#9CA3AF' }}>Loading data...</div>
-              ) : (
-                <>
-                  <div style={{ marginBottom:'14px' }}>
-                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'5px' }}>Select Sample *</label>
-                    <select value={selSample} onChange={e=>setSelSample(e.target.value)}
-                      style={{ width:'100%', border:`1.5px solid ${PL}`, borderRadius:'9px', padding:'10px 12px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#111827', outline:'none', cursor:'pointer', boxSizing:'border-box' }}>
-                      <option value="">— Choose a pending sample —</option>
-                      {samples.map(s => (
-                        <option key={s.id} value={s.id}>{s.sample_number} · {s.sample_name} ({s.departments?.name})</option>
-                      ))}
-                    </select>
-                    {samples.length===0 && <p style={{ fontSize:'11px', color:'#9CA3AF', margin:'4px 0 0' }}>No pending samples at this time</p>}
-                  </div>
-
-                  <div style={{ marginBottom:'14px' }}>
-                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'5px' }}>Assign to Analyst *</label>
-                    <select value={selAnalyst} onChange={e=>setSelAnalyst(e.target.value)}
-                      style={{ width:'100%', border:`1.5px solid ${PL}`, borderRadius:'9px', padding:'10px 12px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#111827', outline:'none', cursor:'pointer', boxSizing:'border-box' }}>
-                      <option value="">— Choose analyst —</option>
-                      {analysts.map(a => (
-                        <option key={a.id} value={a.id}>{a.full_name} — {a.roles?.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div style={{ marginBottom:'20px' }}>
-                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'5px' }}>Special Instructions (optional)</label>
-                    <textarea value={assignNote} onChange={e=>setAssignNote(e.target.value)} rows={3}
-                      placeholder="Priority, method to use, deadline or any special notes..."
-                      style={{ width:'100%', border:`1.5px solid ${PL}`, borderRadius:'9px', padding:'10px 12px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#111827', outline:'none', resize:'vertical', boxSizing:'border-box' }}/>
-                  </div>
-
-                  <div style={{ display:'flex', gap:'10px' }}>
-                    <button onClick={handleAssign} disabled={!selSample||!selAnalyst||assigning}
-                      style={{ flex:1, padding:'12px', background:(!selSample||!selAnalyst)?'#A78BFA':`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700', cursor:(!selSample||!selAnalyst)?'not-allowed':'pointer', fontFamily:'inherit', boxShadow:'0 2px 8px rgba(124,58,237,0.3)' }}>
-                      {assigning?'Assigning...':'✅ Assign Now'}
-                    </button>
-                    <button onClick={() => setShowAssign(false)}
-                      style={{ flex:1, padding:'12px', background:'#F3F4F6', color:'#374151', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {showAssign && <AssignSampleModal onClose={() => setShowAssign(false)} />}
     </>
   );
 }
