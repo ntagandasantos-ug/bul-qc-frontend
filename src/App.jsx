@@ -17,6 +17,7 @@ import FPDashboardPage           from './pages/FPDashboardPage';
 import SoapDashboardPage         from './pages/SoapDashboardPage';
 import QCHeadDashboardPage       from './pages/QCHeadDashboardPage';
 import ReportBooksPage           from './pages/ReportBooksPage';
+import InventoryPage             from './pages/InventoryPage';
 
 // ── Role-based dashboard selector ────────────────────────
 // QC Head and QC Assistant → new QC Head Dashboard
@@ -114,6 +115,12 @@ export default function App() {
               <AdminPage />
             </ProtectedRoute>
           } />
+
+          <Route path="/inventory" element={
+  <ProtectedRoute>
+    <InventoryPage />
+  </ProtectedRoute>
+} />
 
           {/* Redirects */}
           <Route path="/"  element={<Navigate to="/dashboard" replace />} />

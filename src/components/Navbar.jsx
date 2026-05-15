@@ -19,6 +19,15 @@ const PM = '#7C3AED';
 const PL = '#EDE9FE';
 const G  = '#FFB81C';
 
+const LINE_ITEMS = [
+  { icon:'🧼', label:'Soap Line Inspection',       sub:'QC checks for soap production line',          path:'/inspection/soap'       },
+  { icon:'🧴', label:'Detergent Line Inspection',  sub:'QC checks for detergent production line',     path:'/inspection/detergent'  },
+  { icon:'♻️', label:'Plastics Line Inspection',   sub:'QC checks for plastics / packaging line',     path:'/inspection/plastics'   },
+  { icon:'🛢️', label:'Oil Line Inspection',        sub:'QC checks for oil filling & refinery lines',  path:'/inspection/oil'        },
+  { icon:'📦', label:'Fats Line Inspection',       sub:'QC checks for fats packing line',             path:'/inspection/fats'       },
+  { icon:'📋', label:'Daily Summary Report',       sub:'Combined daily inspection summary all lines', path:'/inspection/summary'    },
+];
+
 const REPORT_ITEMS = [
   { icon:'📚', label:'Report Books & Sign-off',    badge:'Core', sub:'7 official lab record books with daily QC Head approval',          path:'/report-books'                },
   { icon:'⚠️', label:'OOS Investigation Log',       badge:'',     sub:'Out-of-spec history, root cause & corrective action tracker',      path:'/reports/oos-log'             },
@@ -46,15 +55,17 @@ export default function Navbar() {
   const navigate  = useNavigate();
   const location  = useLocation();
 
-  const [showReports, setShowReports] = useState(false);
-  const [showAdmin,   setShowAdmin]   = useState(false);
-  const [showAvatar,  setShowAvatar]  = useState(false);
-  const [showAssign,  setShowAssign]  = useState(false);
-  const [avatar,      setAvatar]      = useState(() => localStorage.getItem('bul_qc_avatar_'+(user?.id||'g')));
+  const [showReports,  setShowReports]  = useState(false);
+  const [showAdmin,    setShowAdmin]    = useState(false);
+  const [showAvatar,   setShowAvatar]   = useState(false);
+  const [showAssign,   setShowAssign]   = useState(false);
+  const [showLineInsp, setShowLineInsp] = useState(false);
+  const [avatar,       setAvatar]       = useState(() => localStorage.getItem('bul_qc_avatar_'+(user?.id||'g')));
 
-  const fileRef    = useRef(null);
-  const reportsRef = useRef(null);
-  const adminRef   = useRef(null);
+  const fileRef     = useRef(null);
+  const reportsRef  = useRef(null);
+  const adminRef    = useRef(null);
+  const lineInspRef = useRef(null);
 
   const role     = user?.roles?.name || '';
   const isQCHead = role === 'QC Head' || role === 'QC Assistant';
@@ -62,8 +73,9 @@ export default function Navbar() {
 
   useEffect(() => {
     const h = (e) => {
-      if (reportsRef.current && !reportsRef.current.contains(e.target)) setShowReports(false);
-      if (adminRef.current   && !adminRef.current.contains(e.target))   setShowAdmin(false);
+      if (reportsRef.current  && !reportsRef.current.contains(e.target))  setShowReports(false);
+      if (adminRef.current    && !adminRef.current.contains(e.target))    setShowAdmin(false);
+      if (lineInspRef.current && !lineInspRef.current.contains(e.target)) setShowLineInsp(false);
       if (!e.target.closest?.('.avatar-zone')) setShowAvatar(false);
     };
     document.addEventListener('mousedown', h);
@@ -71,6 +83,7 @@ export default function Navbar() {
   }, []);
 
   const openAssign = () => setShowAssign(true);
+
   const uploadAvatar = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
     const r = new FileReader();
@@ -145,16 +158,27 @@ export default function Navbar() {
         {/* Nav buttons */}
         <NBtn label="Dashboard" active={isActive('/dashboard')} onClick={() => navigate('/dashboard')}/>
 
+        {/* Inventory — visible to all */}
+        <NBtn label="📦 Inventory" active={isActive('/inventory')} onClick={() => navigate('/inventory')}/>
+
+        {/* Line Inspection dropdown — visible to all */}
+        <div ref={lineInspRef} style={{ position:'relative' }}>
+          <NBtn label="🔍 Line Inspection" active={showLineInsp} onClick={() => { setShowLineInsp(!showLineInsp); setShowReports(false); setShowAdmin(false); }} chevron/>
+          {showLineInsp && <DropMenu items={LINE_ITEMS} onClose={() => setShowLineInsp(false)}/>}
+        </div>
+
+        {/* Reports dropdown — QC Head only */}
         {isQCHead && (
           <div ref={reportsRef} style={{ position:'relative' }}>
-            <NBtn label="Reports" active={showReports} onClick={() => { setShowReports(!showReports); setShowAdmin(false); }} chevron/>
+            <NBtn label="Reports" active={showReports} onClick={() => { setShowReports(!showReports); setShowAdmin(false); setShowLineInsp(false); }} chevron/>
             {showReports && <DropMenu items={REPORT_ITEMS} onClose={() => setShowReports(false)}/>}
           </div>
         )}
 
+        {/* Admin dropdown — QC Head only */}
         {isQCHead && (
           <div ref={adminRef} style={{ position:'relative' }}>
-            <NBtn label="Admin" active={showAdmin} onClick={() => { setShowAdmin(!showAdmin); setShowReports(false); }} chevron/>
+            <NBtn label="Admin" active={showAdmin} onClick={() => { setShowAdmin(!showAdmin); setShowReports(false); setShowLineInsp(false); }} chevron/>
             {showAdmin && <DropMenu items={ADMIN_ITEMS} onClose={() => setShowAdmin(false)}/>}
           </div>
         )}
