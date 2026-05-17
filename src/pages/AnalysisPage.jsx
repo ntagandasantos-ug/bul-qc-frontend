@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Navbar     from '../components/Navbar';
-import PageFooter from '../components/PageFooter';
-import { useAuth } from '../context/AuthContext';
-import api         from '../services/api';
-import { toast }   from 'react-toastify';
+import Navbar          from '../components/Navbar';
+import PageFooter      from '../components/PageFooter';
+import SampleEditModal from '../components/SampleEditModal';
+import { useAuth }     from '../context/AuthContext';
+import api             from '../services/api';
+import { toast }       from 'react-toastify';
 
 const P  = '#6B21A8';
 const PM = '#7C3AED';
@@ -21,16 +22,18 @@ export default function AnalysisPage() {
   const navigate = useNavigate();
   const { user, signingAs } = useAuth();
 
-  const [sample,      setSample]      = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState('');
-  const [tests,       setTests]       = useState([]);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [step,        setStep]        = useState('confirm');
-  const [results,     setResults]     = useState({});
-  const [analyst,     setAnalyst]     = useState(signingAs || '');
-  const [saving,      setSaving]      = useState({});
-  const [staffList,   setStaffList]   = useState([]);
+  const [sample,       setSample]      = useState(null);
+  const [loading,      setLoading]     = useState(true);
+  const [error,        setError]       = useState('');
+  const [tests,        setTests]       = useState([]);
+  const [selectedIds,  setSelectedIds] = useState([]);
+  const [step,         setStep]        = useState('confirm');
+  const [results,      setResults]     = useState({});
+  const [analyst,      setAnalyst]     = useState(signingAs || '');
+  const [saving,       setSaving]      = useState({});
+  const [staffList,    setStaffList]   = useState([]);
+  const [removingTest, setRemovingTest]= useState(null); // assignmentId being removed
+  const [showEdit,     setShowEdit]    = useState(false);
 
   // ── Load sample ─────────────────────────────────────────
   const loadSample = useCallback(async () => {
@@ -79,6 +82,19 @@ export default function AnalysisPage() {
       setStaffList(res.data?.staff || []);
     }).catch(() => {});
   }, []);
+
+  // ── Remove a test (only if no result submitted) ───────────
+  const removeTest = async (assignmentId, testName) => {
+    if (!window.confirm(`Remove "${testName}" from this sample? This cannot be undone.`)) return;
+    setRemovingTest(assignmentId);
+    try {
+      await api.delete(`/samples/assignment/${assignmentId}`);
+      toast.success(`✅ ${testName} removed from this sample`);
+      await loadSample();
+    } catch(err) {
+      toast.error(err.response?.data?.error || 'Failed to remove test');
+    } finally { setRemovingTest(null); }
+  };
 
   // ── Evaluate result against spec ─────────────────────────
   const evaluate = (value, assignment) => {
@@ -284,18 +300,25 @@ export default function AnalysisPage() {
                     )}
                   </div>
                 </div>
-                <div style={{ textAlign:'right', fontSize:'12px', color:'#6B7280' }}>
-                  {sample.registered_at && (
-                    <>
-                      <div>{new Date(sample.registered_at).toLocaleDateString()}</div>
-                      <div style={{ fontWeight:'700', color:PM }}>
-                        {new Date(sample.registered_at).toLocaleTimeString()}
-                      </div>
-                    </>
-                  )}
-                  {sample.sampler_name && (
-                    <div style={{ marginTop:'4px' }}>Sampler: <strong>{sample.sampler_name}</strong></div>
-                  )}
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'6px' }}>
+                  {/* ── CORRECT SAMPLE BUTTON ── */}
+                  <button onClick={() => setShowEdit(true)}
+                    style={{ padding:'6px 14px', background:'#FFF7ED', color:'#EA580C', border:'1.5px solid #FED7AA', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:'5px' }}>
+                    ✏️ Correct This Sample
+                  </button>
+                  <div style={{ textAlign:'right', fontSize:'12px', color:'#6B7280' }}>
+                    {sample.registered_at && (
+                      <>
+                        <div>{new Date(sample.registered_at).toLocaleDateString()}</div>
+                        <div style={{ fontWeight:'700', color:PM }}>
+                          {new Date(sample.registered_at).toLocaleTimeString()}
+                        </div>
+                      </>
+                    )}
+                    {sample.sampler_name && (
+                      <div style={{ marginTop:'4px' }}>Sampler: <strong>{sample.sampler_name}</strong></div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -443,7 +466,6 @@ export default function AnalysisPage() {
                                     Spec: {specStr} {assignment.tests?.unit||''}
                                   </span>
                                 )}
-                                {/* Edit counter */}
                                 {r.submitted && (
                                   <span style={{
                                     fontSize:'11px', fontWeight:'700',
@@ -458,16 +480,34 @@ export default function AnalysisPage() {
                               </div>
                             </div>
 
-                            {r.submitted && (
-                              <span style={{
-                                padding:'3px 10px', borderRadius:'10px',
-                                fontSize:'11px', fontWeight:'800',
-                                background:cs.bg, color:cs.text,
-                                border:`1px solid ${cs.border}`,
-                              }}>
-                                {r.remarks}
-                              </span>
-                            )}
+                            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                              {r.submitted && (
+                                <span style={{
+                                  padding:'3px 10px', borderRadius:'10px',
+                                  fontSize:'11px', fontWeight:'800',
+                                  background:cs.bg, color:cs.text,
+                                  border:`1px solid ${cs.border}`,
+                                }}>
+                                  {r.remarks}
+                                </span>
+                              )}
+                              {/* ── REMOVE TEST BUTTON — only if no result submitted ── */}
+                              {!r.submitted && !isLocked && (
+                                <button
+                                  onClick={() => removeTest(assignment.id, assignment.tests?.name)}
+                                  disabled={removingTest === assignment.id}
+                                  title="Remove this test from the sample"
+                                  style={{
+                                    padding:'4px 10px', background:'#FEF2F2',
+                                    color:'#DC2626', border:'1px solid #FECACA',
+                                    borderRadius:'8px', fontSize:'11px', fontWeight:'700',
+                                    cursor:'pointer', fontFamily:'inherit',
+                                    display:'flex', alignItems:'center', gap:'3px',
+                                  }}>
+                                  {removingTest===assignment.id ? '...' : '🗑 Remove'}
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Input + button */}
@@ -564,6 +604,15 @@ export default function AnalysisPage() {
           </>
         )}
       </div>
+
+      {/* ── SAMPLE EDIT MODAL ── */}
+      {showEdit && sample && (
+        <SampleEditModal
+          sample={sample}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => { setShowEdit(false); loadSample(); }}
+        />
+      )}
 
       <PageFooter />
     </div>
