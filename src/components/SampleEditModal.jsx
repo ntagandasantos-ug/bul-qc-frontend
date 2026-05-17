@@ -32,6 +32,8 @@ export default function SampleEditModal({ sample, onClose, onSaved }) {
   const [showVoid,   setShowVoid]   = useState(false);
   const [voidReason, setVoidReason] = useState('');
 
+  const [typeChanged,  setTypeChanged]  = useState(false);
+
   const deptId = sample?.departments?.id || sample?.department_id;
 
   useEffect(() => {
@@ -56,6 +58,8 @@ export default function SampleEditModal({ sample, onClose, onSaved }) {
     const t = types.find(x => x.id === tid);
     setNeedsSub(t?.requires_subtype || false);
     setSubtypeId('');
+    // Flag if type is different from original
+    setTypeChanged(tid !== sample?.sample_type_id);
   };
 
   const handleSave = async () => {
@@ -64,7 +68,7 @@ export default function SampleEditModal({ sample, onClose, onSaved }) {
 
     setSaving(true);
     try {
-      await api.put(`/samples/${sample.id}`, {
+      const res = await api.put(`/samples/${sample.id}`, {
         sample_name      : sampleName.trim(),
         sample_type_id   : typeId   || undefined,
         subtype_id       : subtypeId || undefined,
@@ -73,7 +77,13 @@ export default function SampleEditModal({ sample, onClose, onSaved }) {
         notes            : notes.trim() || undefined,
         correction_reason: reason.trim(),
       });
-      toast.success('✅ Sample corrected successfully');
+
+      if (res.data?.testsReassigned) {
+        toast.success('✅ Sample corrected and tests reassigned with correct specifications');
+        if (res.data?.warning) toast.info(res.data.warning);
+      } else {
+        toast.success('✅ Sample corrected successfully');
+      }
       onSaved();
       onClose();
     } catch(err) {
@@ -188,6 +198,20 @@ export default function SampleEditModal({ sample, onClose, onSaved }) {
             <label style={lbl}>Notes</label>
             <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} style={inp} placeholder="Optional notes"/>
           </div>
+
+          {/* Warning when sample type changes */}
+          {typeChanged && (
+            <div style={{ background:'#FEF9C3', border:'1.5px solid #FDE68A', borderRadius:'10px', padding:'10px 14px', marginBottom:'14px' }}>
+              <div style={{ fontWeight:'800', color:'#854D0E', fontSize:'13px', marginBottom:'4px' }}>
+                ⚠️ Sample Type Changed — Tests Will Be Reassigned
+              </div>
+              <p style={{ fontSize:'12px', color:'#92400E', margin:0, lineHeight:1.6 }}>
+                Changing the sample type will <strong>automatically remove all unsubmitted tests</strong> and
+                replace them with the correct tests and specifications for the new type.<br/>
+                Any tests that already have results submitted will be kept.
+              </p>
+            </div>
+          )}
 
           {/* Reason for correction — REQUIRED */}
           <div style={{ background:'#F5F3FF', border:`1.5px solid ${PL}`, borderRadius:'10px', padding:'12px 14px', marginBottom:'16px' }}>
