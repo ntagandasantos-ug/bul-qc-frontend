@@ -12,6 +12,12 @@ import { supabase } from '../services/supabase';
 import api from '../services/api';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+import {
+  RequisitionModal,
+  TransferModal,
+  UsageModal,
+  StockBalanceSheet,
+} from '../components/InventoryModals';
 
 const P  = '#6B21A8';
 const PM = '#7C3AED';
@@ -56,6 +62,9 @@ export default function InventoryPage() {
   const [breakModal,   setBreakModal]   = useState(null);
   const [txnModal,     setTxnModal]     = useState(null);
   const [reqModal,     setReqModal]     = useState(false);
+  const [transferModal,setTransferModal]= useState(false);
+  const [usageModal,   setUsageModal]   = useState(false);
+  const [balanceSheet, setBalanceSheet] = useState(false);
   const [toast,        setToast]        = useState(null);
   const [saving,       setSaving]       = useState(false);
 
@@ -254,16 +263,28 @@ export default function InventoryPage() {
           <div style={{ marginTop:'16px', padding:'12px', background:'#F5F3FF', borderRadius:'10px', border:`1px solid ${PL}` }}>
             <div style={{ fontSize:'11px', fontWeight:'700', color:P, marginBottom:'8px' }}>Quick Actions</div>
             <button onClick={() => setReqModal(true)}
-              style={{ width:'100%', padding:'7px', background:PM, color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px' }}>
+              style={{ width:'100%', padding:'7px', background:PM, color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px', textAlign:'left' }}>
               📋 New Requisition
             </button>
+            <button onClick={() => setTransferModal(true)}
+              style={{ width:'100%', padding:'7px', background:'#EA580C', color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px', textAlign:'left' }}>
+              🔄 Lab-to-Lab Transfer
+            </button>
+            <button onClick={() => setUsageModal(true)}
+              style={{ width:'100%', padding:'7px', background:'#0369A1', color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px', textAlign:'left' }}>
+              🔬 Record Lab Usage
+            </button>
             <button onClick={() => setBreakModal({})}
-              style={{ width:'100%', padding:'7px', background:'#FEF2F2', color:RD, border:`1px solid #FECACA`, borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px' }}>
+              style={{ width:'100%', padding:'7px', background:'#FEF2F2', color:RD, border:`1px solid #FECACA`, borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px', textAlign:'left' }}>
               💔 Record Breakage
             </button>
             <button onClick={() => setTxnModal(true)}
-              style={{ width:'100%', padding:'7px', background:'#F9FAFB', color:'#374151', border:`1px solid #E5E7EB`, borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
+              style={{ width:'100%', padding:'7px', background:'#F9FAFB', color:'#374151', border:`1px solid #E5E7EB`, borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px', textAlign:'left' }}>
               📜 Transaction Log
+            </button>
+            <button onClick={() => setBalanceSheet(true)}
+              style={{ width:'100%', padding:'7px', background:'#F5F3FF', color:P, border:`1px solid ${PL}`, borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+              📊 Stock Balance Sheet
             </button>
           </div>
         </div>
@@ -481,8 +502,28 @@ export default function InventoryPage() {
                 showToast('Item updated');
               } else {
                 const catRes = await supabase.from('inventory_categories').select('id').eq('code',activeCat).single();
-                await api.post('/inventory/items', { ...data, category_id: catRes.data?.id });
-                showToast('Item added');
+                const res = await api.post('/inventory/items', { ...data, category_id: catRes.data?.id });
+                const newItem = res.data?.item;
+
+                // Set initial quantities if provided
+                const locs = [
+                  { loc:'CHEMICAL_STORE', qty: parseFloat(data.qty_chemical_store||0) },
+                  { loc:'MAIN_LAB',       qty: parseFloat(data.qty_main_lab||0) },
+                  { loc:'DET_LAB',        qty: parseFloat(data.qty_det_lab||0) },
+                ];
+                for (const { loc, qty } of locs) {
+                  if (qty > 0 && newItem?.id) {
+                    await supabase.from('inventory_stock').upsert({
+                      item_id    : newItem.id,
+                      location   : loc,
+                      quantity   : qty,
+                      in_stock   : qty,
+                      in_use     : 0,
+                      last_updated: new Date().toISOString(),
+                    }, { onConflict:'item_id,location' });
+                  }
+                }
+                showToast('Item added with initial quantities');
               }
               setAddModal(false); setEditItem(null);
               load();
@@ -531,9 +572,36 @@ export default function InventoryPage() {
         />
       )}
 
-      {/* ── TRANSACTION LOG MODAL ── */}
-      {txnModal && (
-        <TransactionModal onClose={() => setTxnModal(null)} />
+      {/* ── REQUISITION MODAL ── */}
+      {reqModal && (
+        <RequisitionModal
+          onClose={() => setReqModal(false)}
+          onSuccess={() => { setReqModal(false); load(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* ── TRANSFER MODAL ── */}
+      {transferModal && (
+        <TransferModal
+          onClose={() => setTransferModal(false)}
+          onSuccess={() => { setTransferModal(false); load(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* ── USAGE MODAL ── */}
+      {usageModal && (
+        <UsageModal
+          onClose={() => setUsageModal(false)}
+          onSuccess={() => { setUsageModal(false); load(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* ── BALANCE SHEET ── */}
+      {balanceSheet && (
+        <StockBalanceSheet onClose={() => setBalanceSheet(false)} />
       )}
 
       <PageFooter />
@@ -549,6 +617,10 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
     specifications:'', storage_conditions:'', restrictions:'',
     usage_description:'', brand_name:'', ph_range:'',
     capacity:'', type_or_brand:'',
+    // Initial quantities per location
+    qty_chemical_store: 0,
+    qty_main_lab      : 0,
+    qty_det_lab       : 0,
     ...item,
   });
   const set = (k,v) => setForm(p=>({...p,[k]:v}));
@@ -556,11 +628,12 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
   const fld2 = { marginBottom:'12px' };
   const lbl2 = { display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px' };
   const isChemical_ = ['SOLID_CHEM','LIQUID_CHEM','INDICATORS','PH_BUFFER'].includes(catCode);
+  const hasInUse_   = ['GLASSWARE','UTILITIES','LOGBOOKS'].includes(catCode);
 
   return (
     <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#fff', borderRadius:'18px', maxWidth:'640px', width:'100%', maxHeight:'90vh', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column' }}>
-        <div style={{ background:`linear-gradient(135deg,#6B21A8,#7C3AED)`, padding:'16px 22px', color:'#fff' }}>
+      <div style={{ background:'#fff', borderRadius:'18px', maxWidth:'680px', width:'100%', maxHeight:'92vh', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column' }}>
+        <div style={{ background:`linear-gradient(135deg,#6B21A8,#7C3AED)`, padding:'16px 22px', color:'#fff', flexShrink:0 }}>
           <div style={{ fontWeight:'900', fontSize:'16px' }}>{item?'Edit':'Add'} {catName} Item</div>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
@@ -573,7 +646,7 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
               <div style={fld2}><label style={lbl2}>Brand Name</label><input type="text" value={form.brand_name||''} onChange={e=>set('brand_name',e.target.value)} style={inp2}/></div>
               <div style={fld2}><label style={lbl2}>pH Range</label><input type="text" value={form.ph_range||''} onChange={e=>set('ph_range',e.target.value)} style={inp2} placeholder="e.g. 4.0 – 7.0"/></div>
             </>}
-            {['GLASSWARE','UTILITIES'].includes(catCode)&&<>
+            {hasInUse_&&<>
               <div style={fld2}><label style={lbl2}>Capacity</label><input type="text" value={form.capacity||''} onChange={e=>set('capacity',e.target.value)} style={inp2} placeholder="e.g. 250ml"/></div>
               <div style={fld2}><label style={lbl2}>Type / Brand</label><input type="text" value={form.type_or_brand||''} onChange={e=>set('type_or_brand',e.target.value)} style={inp2}/></div>
             </>}
@@ -585,12 +658,39 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
             </>}
             <div style={fld2}><label style={lbl2}>Unit of Measurement</label><input type="text" value={form.unit_of_measurement||''} onChange={e=>set('unit_of_measurement',e.target.value)} style={inp2} placeholder="e.g. g, ml, pcs"/></div>
             <div style={fld2}><label style={lbl2}>Country of Origin</label><input type="text" value={form.country_of_origin||''} onChange={e=>set('country_of_origin',e.target.value)} style={inp2}/></div>
-            <div style={fld2}><label style={lbl2}>Reorder Level</label><input type="number" value={form.reorder_level||0} onChange={e=>set('reorder_level',e.target.value)} style={inp2}/></div>
+            <div style={fld2}><label style={lbl2}>Reorder Level (Chemical Store)</label><input type="number" value={form.reorder_level||0} onChange={e=>set('reorder_level',e.target.value)} style={inp2}/></div>
             <div style={fld2}><label style={lbl2}>Expiry Date</label><input type="date" value={form.expiry_date||''} onChange={e=>set('expiry_date',e.target.value)} style={inp2}/></div>
+
+            {/* ── Initial Stock Quantities ── */}
+            {!item && (
+              <div style={{ gridColumn:'1/3', background:'#F5F3FF', borderRadius:'12px', padding:'14px', border:`1.5px solid #EDE9FE`, marginBottom:'4px' }}>
+                <div style={{ fontSize:'12px', fontWeight:'800', color:'#4C1D95', marginBottom:'10px' }}>
+                  📦 Initial Stock Quantities
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
+                  <div>
+                    <label style={lbl2}>Chemical Store</label>
+                    <input type="number" min="0" value={form.qty_chemical_store||0} onChange={e=>set('qty_chemical_store',e.target.value)} style={inp2} placeholder="0"/>
+                  </div>
+                  <div>
+                    <label style={lbl2}>Main Lab</label>
+                    <input type="number" min="0" value={form.qty_main_lab||0} onChange={e=>set('qty_main_lab',e.target.value)} style={inp2} placeholder="0"/>
+                  </div>
+                  <div>
+                    <label style={lbl2}>Detergent Lab</label>
+                    <input type="number" min="0" value={form.qty_det_lab||0} onChange={e=>set('qty_det_lab',e.target.value)} style={inp2} placeholder="0"/>
+                  </div>
+                </div>
+                <p style={{ fontSize:'11px', color:'#6B7280', margin:'8px 0 0' }}>
+                  These quantities will be set immediately when the item is added.
+                </p>
+              </div>
+            )}
+
             <div style={{ gridColumn:'1/3', ...fld2 }}><label style={lbl2}>Comments / Remarks</label><textarea value={form.comments||''} onChange={e=>set('comments',e.target.value)} style={{ ...inp2, minHeight:'60px', resize:'vertical' }}/></div>
           </div>
         </div>
-        <div style={{ padding:'14px 24px', borderTop:`1.5px solid #EDE9FE`, background:'#F9FAFB', display:'flex', gap:'10px' }}>
+        <div style={{ padding:'14px 24px', borderTop:`1.5px solid #EDE9FE`, background:'#F9FAFB', display:'flex', gap:'10px', flexShrink:0 }}>
           <button onClick={()=>onSave(form)} disabled={!form.item_name.trim()}
             style={{ flex:1, padding:'11px', background:!form.item_name.trim()?'#A78BFA':`linear-gradient(135deg,#6B21A8,#7C3AED)`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700', cursor:!form.item_name.trim()?'not-allowed':'pointer', fontFamily:'inherit' }}>
             {item?'✅ Update Item':'✅ Add Item'}
