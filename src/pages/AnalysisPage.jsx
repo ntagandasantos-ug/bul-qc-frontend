@@ -31,8 +31,9 @@ export default function AnalysisPage() {
   const [results,      setResults]     = useState({});
   const [analyst,      setAnalyst]     = useState(signingAs || '');
   const [saving,       setSaving]      = useState({});
+  const [savingAll,    setSavingAll]   = useState(false);
   const [staffList,    setStaffList]   = useState([]);
-  const [removingTest, setRemovingTest]= useState(null); // assignmentId being removed
+  const [removingTest, setRemovingTest]= useState(null);
   const [showEdit,     setShowEdit]    = useState(false);
 
   // ── Load sample ─────────────────────────────────────────
@@ -94,6 +95,75 @@ export default function AnalysisPage() {
     } catch(err) {
       toast.error(err.response?.data?.error || 'Failed to remove test');
     } finally { setRemovingTest(null); }
+  };
+
+  // ── Submit ALL results at once ────────────────────────────
+  const submitAllResults = async () => {
+    if (!analyst.trim()) { toast.warning('Select your name as the analyst first'); return; }
+
+    const assignments = (sample?.sample_test_assignments || [])
+      .filter(a => {
+        const r = results[a.id] || {};
+        // Only submit ones that have a value and are not locked
+        return r.value?.trim() && !(r.locked || r.editCount >= 2);
+      });
+
+    if (assignments.length === 0) {
+      toast.warning('No results to submit. Enter values in the fields first.');
+      return;
+    }
+
+    setSavingAll(true);
+    let successCount = 0;
+    let oosCount     = 0;
+
+    try {
+      for (const assignment of assignments) {
+        const r  = results[assignment.id] || {};
+        const ev = evaluate(r.value, assignment);
+
+        try {
+          await api.put(`/results/${assignment.id}`, {
+            result_value      : r.value.trim(),
+            analyst_signature : analyst.trim(),
+            result_status     : ev.status,
+            remarks           : ev.remarks,
+            action            : ev.action,
+            submitted_at      : new Date().toISOString(),
+          });
+
+          const isOOS = ev.status === 'fail_low' || ev.status === 'fail_high';
+          if (isOOS) oosCount++;
+          successCount++;
+
+          // Update local state
+          setResults(prev => ({
+            ...prev,
+            [assignment.id]: {
+              ...prev[assignment.id],
+              submitted: true,
+              status   : ev.status,
+              remarks  : ev.remarks,
+              subAt    : new Date().toISOString(),
+              analyst  : analyst.trim(),
+              editCount: (prev[assignment.id]?.editCount || 0),
+            },
+          }));
+        } catch(err) {
+          console.error(`Failed to submit ${assignment.tests?.name}:`, err.message);
+        }
+      }
+
+      if (oosCount > 0) {
+        toast.error(`⚠️ ${successCount} result(s) submitted — ${oosCount} OUT OF SPEC`);
+      } else {
+        toast.success(`✅ ${successCount} result(s) submitted successfully`);
+      }
+
+      await loadSample();
+    } finally {
+      setSavingAll(false);
+    }
   };
 
   // ── Evaluate result against spec ─────────────────────────
@@ -403,13 +473,66 @@ export default function AnalysisPage() {
             {/* STEP 2: Enter results */}
             {step === 'enter' && (
               <div style={{ background:'#fff', borderRadius:'16px', border:`1.5px solid ${PL}`, padding:'20px' }}>
-                <h3 style={{ fontSize:'16px', fontWeight:'800', color:'#1F2937', marginBottom:'4px' }}>
-                  Step 2 — Enter Results
-                </h3>
-                <p style={{ fontSize:'13px', color:'#6B7280', marginBottom:'16px' }}>
-                  Results colour green (pass) or red (fail) automatically.
-                  Each result can be updated a maximum of <strong>2 times</strong> then locked.
-                </p>
+
+                {/* Header row with Submit All button */}
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'10px', flexWrap:'wrap', marginBottom:'4px' }}>
+                  <div>
+                    <h3 style={{ fontSize:'16px', fontWeight:'800', color:'#1F2937', margin:'0 0 4px' }}>
+                      Step 2 — Enter Results
+                    </h3>
+                    <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>
+                      Enter all values below then click <strong>Submit All</strong>, or submit each test individually.
+                      Max <strong>2 updates</strong> per result then locked.
+                    </p>
+                  </div>
+
+                  {/* ── SUBMIT ALL BUTTON ── */}
+                  <button
+                    onClick={submitAllResults}
+                    disabled={savingAll || !analyst.trim()}
+                    style={{
+                      padding     : '11px 22px',
+                      background  : savingAll || !analyst.trim()
+                        ? '#A78BFA'
+                        : 'linear-gradient(135deg,#0D9488,#059669)',
+                      color       : '#fff',
+                      border      : 'none',
+                      borderRadius: '12px',
+                      fontSize    : '14px',
+                      fontWeight  : '800',
+                      cursor      : savingAll || !analyst.trim() ? 'not-allowed' : 'pointer',
+                      fontFamily  : 'inherit',
+                      whiteSpace  : 'nowrap',
+                      boxShadow   : savingAll ? 'none' : '0 3px 10px rgba(13,148,136,0.35)',
+                      flexShrink  : 0,
+                      display     : 'flex',
+                      alignItems  : 'center',
+                      gap         : '7px',
+                    }}
+                    title={!analyst.trim() ? 'Select analyst name first' : 'Submit all entered results at once'}
+                  >
+                    {savingAll ? (
+                      <>⏳ Submitting...</>
+                    ) : (
+                      <>✅ Submit All Results</>
+                    )}
+                  </button>
+                </div>
+
+                {/* Progress hint */}
+                {(() => {
+                  const all  = sample?.sample_test_assignments || [];
+                  const done = all.filter(a => (results[a.id]?.submitted));
+                  const pending = all.filter(a => !(results[a.id]?.submitted) && !results[a.id]?.locked);
+                  const filled = pending.filter(a => results[a.id]?.value?.trim());
+                  return pending.length > 0 ? (
+                    <div style={{ background:'#F5F3FF', borderRadius:'8px', padding:'7px 12px', marginBottom:'16px', fontSize:'12px', color:'#4C1D95', display:'flex', gap:'12px', flexWrap:'wrap' }}>
+                      <span>✅ {done.length} submitted</span>
+                      <span>✏️ {filled.length} filled, not yet submitted</span>
+                      <span style={{ color:'#9CA3AF' }}>⏳ {pending.length - filled.length} empty</span>
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* Analyst selector */}
                 <div style={{ marginBottom:'20px' }}>
@@ -587,6 +710,35 @@ export default function AnalysisPage() {
                       );
                     })}
                 </div>
+
+                {/* Submit All Results button */}
+{(sample.sample_test_assignments||[]).some(a => {
+  const r = results[a.id] || {};
+  return r.value?.trim() && !r.submitted && !(r.locked || r.editCount >= 2);
+}) && (
+  <button
+    onClick={submitAllResults}
+    disabled={savingAll || !analyst.trim()}
+    style={{
+      width       : '100%',
+      marginTop   : '16px',
+      padding     : '15px',
+      background  : savingAll || !analyst.trim()
+        ? '#A78BFA'
+        : 'linear-gradient(135deg,#0D9488,#059669)',
+      color       : '#fff',
+      border      : 'none',
+      borderRadius: '12px',
+      fontSize    : '15px',
+      fontWeight  : '800',
+      cursor      : savingAll || !analyst.trim() ? 'not-allowed' : 'pointer',
+      fontFamily  : 'inherit',
+      boxShadow   : savingAll ? 'none' : '0 4px 12px rgba(13,148,136,0.35)',
+    }}
+  >
+    {savingAll ? '⏳ Saving all results...' : '✅ Save All Results at Once'}
+  </button>
+)}
 
                 {/* Back to test selection (only if no results yet) */}
                 {(sample.sample_test_assignments||[]).every(a => !a.result_value) && (
