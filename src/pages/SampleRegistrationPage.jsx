@@ -182,7 +182,7 @@ export default function SampleRegistrationPage() {
     if (!deptId)       { toast.warning('Select a department'); return; }
     if (!single.catId) { toast.warning('Select a category'); return; }
     if (!single.typeId){ toast.warning('Select a sample type'); return; }
-    if (single.needsSub && !single.subtypeId){ toast.warning('Select LBD or HBD'); return; }
+    if (single.needsSub && !single.subtypeId){ toast.warning('Select a form (LBD, HBD or IDP)'); return; }
     if (!finalSampler) { toast.warning('Select the sampler who collected this sample'); return; }
 
     setSubmitting(true);
@@ -226,7 +226,7 @@ export default function SampleRegistrationPage() {
       if (!name)    { toast.warning(`Row ${i+1}: Enter a sample name`); return; }
       if (!s.catId) { toast.warning(`Row ${i+1}: Select a category`); return; }
       if (!s.typeId){ toast.warning(`Row ${i+1}: Select a sample type`); return; }
-      if (s.needsSub && !s.subtypeId){ toast.warning(`Row ${i+1}: Select LBD or HBD`); return; }
+      if (s.needsSub && !s.subtypeId){ toast.warning(`Row ${i+1}: Select a form (LBD, HBD or IDP)`); return; }
     }
 
     setSubmitting(true);
@@ -500,7 +500,7 @@ export default function SampleRegistrationPage() {
         .filter(sub => {
           const typeName = ((single.types||[]).find(t=>t.id===single.typeId)?.name||'').toLowerCase();
           if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
-          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD';
+          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
           return true;
         })
         .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
@@ -778,7 +778,7 @@ export default function SampleRegistrationPage() {
         .filter(sub => {
           const typeName = ((s.types||[]).find(t=>t.id===s.typeId)?.name||'').toLowerCase();
           if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
-          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD';
+          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
           return true;
         })
         .map(st => <option key={st.id} value={st.id}>{st.name}</option>)
