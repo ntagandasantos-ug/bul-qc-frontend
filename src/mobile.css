@@ -1,0 +1,198 @@
+/* ============================================================
+   FILE: frontend/bul-qc-app/src/mobile.css
+   Global mobile responsiveness for BUL QC App
+   Import this in src/index.js or src/App.jsx
+   ============================================================ */
+
+/* ── Base reset for mobile ─────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Prevent horizontal scroll ─────────────────────────── */
+#root {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Navbar mobile fixes ────────────────────────────────── */
+@media (max-width: 768px) {
+  nav {
+    padding: 0 10px !important;
+    min-height: 48px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  nav::-webkit-scrollbar { display: none; }
+
+  /* Hide text labels on very small screens, keep icons */
+  nav button span:not([style*="font-size: 9px"]) {
+    font-size: 11px !important;
+  }
+}
+
+/* ── Dashboard stats cards ──────────────────────────────── */
+@media (max-width: 480px) {
+  /* Force 2 columns on mobile for stat cards */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Adjust font sizes for cards */
+  .stat-value {
+    font-size: 20px !important;
+  }
+}
+
+/* ── Filter bar wrapping ────────────────────────────────── */
+@media (max-width: 600px) {
+  input[type="text"],
+  input[type="date"],
+  select {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+    min-height: 40px;
+  }
+}
+
+/* ── Tables — horizontal scroll on mobile ───────────────── */
+@media (max-width: 768px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+/* ── Modals — full screen on mobile ────────────────────── */
+@media (max-width: 600px) {
+  /* Make modals use full screen width */
+  [style*="maxWidth: '500px'"],
+  [style*="maxWidth: '540px'"],
+  [style*="maxWidth: '600px'"],
+  [style*="maxWidth: '640px'"] {
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+}
+
+/* ── Buttons — touch friendly ───────────────────────────── */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+/* ── Sample cards on mobile ─────────────────────────────── */
+@media (max-width: 480px) {
+  /* Stack action buttons below sample info */
+  .sample-card-actions {
+    width: 100% !important;
+    margin-top: 10px;
+  }
+
+  .sample-card-actions button {
+    width: 100% !important;
+  }
+}
+
+/* ── Analysis page on mobile ────────────────────────────── */
+@media (max-width: 480px) {
+  /* Stack result input and submit button vertically */
+  .result-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .result-row button {
+    width: 100% !important;
+    min-width: unset !important;
+  }
+}
+
+/* ── Page footer fixed bottom ───────────────────────────── */
+@media (max-width: 600px) {
+  footer, [class*="PageFooter"] {
+    font-size: 10px !important;
+    padding: 6px 10px !important;
+  }
+}
+
+/* ── Smooth scrolling ───────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Inventory sidebar on mobile ────────────────────────── */
+@media (max-width: 768px) {
+  /* Stack sidebar above main content */
+  .inventory-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .inventory-sidebar {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    padding: 8px !important;
+    gap: 6px !important;
+  }
+
+  .inventory-sidebar button {
+    flex-shrink: 0 !important;
+    padding: 6px 12px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* ── QC Head dashboard on mobile ────────────────────────── */
+@media (max-width: 768px) {
+  /* Stack department cards in single column */
+  .dept-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stack chart grid */
+  .charts-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Report books sidebar on mobile ─────────────────────── */
+@media (max-width: 768px) {
+  .report-books-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .report-books-sidebar {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    border-right: none !important;
+    border-bottom: 1.5px solid #EDE9FE !important;
+    padding: 8px !important;
+  }
+}

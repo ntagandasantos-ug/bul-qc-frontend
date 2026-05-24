@@ -1,6 +1,6 @@
 // ============================================================
 // FILE: frontend/bul-qc-app/src/context/AuthContext.jsx
-// Clean reset — simple reliable login flow
+// FIXES white screen on second login by validating token
 // ============================================================
 
 import React, {
@@ -11,23 +11,31 @@ import api from '../services/api';
 
 const AuthContext = createContext(null);
 
+const TOKEN_KEY   = 'bul_qc_token';
+const USER_KEY    = 'bul_qc_user';
+const EXPIRES_KEY = 'bul_qc_expires';
+const SIGNING_KEY = 'bul_qc_signing_as';
+
+const clearStorage = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(EXPIRES_KEY);
+  localStorage.removeItem(SIGNING_KEY);
+};
+
 export function AuthProvider({ children }) {
   const [user,      setUser]      = useState(null);
   const [signingAs, setSigningAs] = useState('');
-  const [token,     setToken]     = useState(
-    () => localStorage.getItem('bul_qc_token')
-  );
+  const [token,     setToken]     = useState(null);
   const [timeLeft,  setTimeLeft]  = useState('');
   const [loading,   setLoading]   = useState(true);
   const timerRef = useRef(null);
 
-  // ── Roles ──────────────────────────────────────────────────
-  const roleName   = user?.roles?.name || '';
-  const isAdmin    = roleName === 'QC Head' || roleName === 'QC Assistant';
+  const roleName     = user?.roles?.name || '';
+  const isAdmin      = roleName === 'QC Head' || roleName === 'QC Assistant';
   const isSupervisor = roleName === 'Shift Supervisor';
-  const isDeptHead = roleName === 'Department Head' || roleName === 'Department Assistant';
+  const isDeptHead   = roleName === 'Department Head' || roleName === 'Department Assistant';
 
-  // ── Format time remaining ──────────────────────────────────
   const formatTime = (ms) => {
     if (ms <= 0) return 'Expired';
     const h = Math.floor(ms / 3600000);
@@ -36,58 +44,84 @@ export function AuthProvider({ children }) {
     return `${h}h ${m}m ${s}s`;
   };
 
-  // ── Start session countdown ────────────────────────────────
   const startTimer = useCallback((expiresAt) => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       const ms = new Date(expiresAt) - Date.now();
       if (ms <= 0) {
-        setTimeLeft('Expired');
         clearInterval(timerRef.current);
-        // Auto logout when session expires
-        localStorage.removeItem('bul_qc_token');
-        localStorage.removeItem('bul_qc_user');
-        localStorage.removeItem('bul_qc_expires');
-        localStorage.removeItem('bul_qc_signing_as');
-        setUser(null);
-        setToken(null);
-        setSigningAs('');
+        clearStorage();
+        delete api.defaults.headers.common['Authorization'];
+        setUser(null); setToken(null); setSigningAs(''); setTimeLeft('Expired');
       } else {
         setTimeLeft(formatTime(ms));
       }
     }, 1000);
   }, []);
 
+  // ── Validate token is still accepted by backend ───────────
+  const validateToken = async (savedToken) => {
+    try {
+      api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
+      await api.get('/auth/me');
+      return true;
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 401 || status === 403) return false;
+      // Network error (server sleeping) — keep session
+      return true;
+    }
+  };
+
   // ── Restore session on page load ──────────────────────────
   useEffect(() => {
-    const savedToken     = localStorage.getItem('bul_qc_token');
-    const savedUser      = localStorage.getItem('bul_qc_user');
-    const savedExpires   = localStorage.getItem('bul_qc_expires');
-    const savedSigningAs = localStorage.getItem('bul_qc_signing_as');
+    const restore = async () => {
+      const savedToken     = localStorage.getItem(TOKEN_KEY);
+      const savedUser      = localStorage.getItem(USER_KEY);
+      const savedExpires   = localStorage.getItem(EXPIRES_KEY);
+      const savedSigningAs = localStorage.getItem(SIGNING_KEY);
 
-    if (savedToken && savedUser && savedExpires) {
+      if (!savedToken || !savedUser || !savedExpires) {
+        clearStorage();
+        setLoading(false);
+        return;
+      }
+
       const ms = new Date(savedExpires) - Date.now();
-      if (ms > 0) {
-        try {
-          const parsedUser = JSON.parse(savedUser);
-          setUser(parsedUser);
-          setToken(savedToken);
-          setSigningAs(savedSigningAs || '');
-          setTimeLeft(formatTime(ms));
-          startTimer(savedExpires);
-        } catch (e) {
-          // Corrupted storage — clear it
-          clearStorage();
-        }
-      } else {
-        // Session expired
+      if (ms <= 0) {
+        clearStorage();
+        setLoading(false);
+        return;
+      }
+
+      // ── KEY FIX: Validate token before restoring ──────────
+      const isValid = await validateToken(savedToken);
+      if (!isValid) {
+        console.log('[Auth] Stale token detected — clearing to prevent white screen');
+        clearStorage();
+        delete api.defaults.headers.common['Authorization'];
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        setToken(savedToken);
+        setSigningAs(savedSigningAs || '');
+        setTimeLeft(formatTime(ms));
+        startTimer(savedExpires);
+        api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
+      } catch (e) {
         clearStorage();
       }
-    }
-    setLoading(false);
+
+      setLoading(false);
+    };
+
+    restore();
   }, [startTimer]);
 
-  // ── Set auth header on every request ─────────────────────
   useEffect(() => {
     if (token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -96,15 +130,11 @@ export function AuthProvider({ children }) {
     }
   }, [token]);
 
-  const clearStorage = () => {
-    localStorage.removeItem('bul_qc_token');
-    localStorage.removeItem('bul_qc_user');
-    localStorage.removeItem('bul_qc_expires');
-    localStorage.removeItem('bul_qc_signing_as');
-  };
-
   // ── LOGIN ──────────────────────────────────────────────────
   const login = async (username, password, signingAsName) => {
+    clearStorage();
+    delete api.defaults.headers.common['Authorization'];
+
     const response = await api.post('/auth/login', {
       username,
       password,
@@ -113,14 +143,12 @@ export function AuthProvider({ children }) {
 
     const { token: newToken, user: newUser, expiresAt } = response.data;
 
-    // Save everything to localStorage so page refresh keeps you logged in
-    localStorage.setItem('bul_qc_token',      newToken);
-    localStorage.setItem('bul_qc_user',       JSON.stringify(newUser));
-    localStorage.setItem('bul_qc_expires',    expiresAt);
-    localStorage.setItem('bul_qc_signing_as', signingAsName || '');
+    localStorage.setItem(TOKEN_KEY,   newToken);
+    localStorage.setItem(USER_KEY,    JSON.stringify(newUser));
+    localStorage.setItem(EXPIRES_KEY, expiresAt);
+    localStorage.setItem(SIGNING_KEY, signingAsName || '');
 
     api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-
     setToken(newToken);
     setUser(newUser);
     setSigningAs(signingAsName || '');
@@ -134,35 +162,19 @@ export function AuthProvider({ children }) {
 
   // ── LOGOUT ─────────────────────────────────────────────────
   const logout = useCallback(async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch (e) {
-      // Continue logout even if API call fails
-    }
+    try { await api.post('/auth/logout'); } catch (e) {}
     if (timerRef.current) clearInterval(timerRef.current);
     clearStorage();
     delete api.defaults.headers.common['Authorization'];
-    setUser(null);
-    setToken(null);
-    setSigningAs('');
-    setTimeLeft('');
+    setUser(null); setToken(null); setSigningAs(''); setTimeLeft('');
   }, []);
 
-  const value = {
-    user,
-    signingAs,
-    token,
-    timeLeft,
-    loading,
-    isAdmin,
-    isSupervisor,
-    isDeptHead,
-    login,
-    logout,
-  };
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{
+      user, signingAs, token, timeLeft, loading,
+      isAdmin, isSupervisor, isDeptHead,
+      login, logout,
+    }}>
       {children}
     </AuthContext.Provider>
   );
