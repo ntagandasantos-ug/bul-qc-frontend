@@ -502,8 +502,14 @@ export default function InventoryPage() {
                 showToast('Item updated');
               } else {
                 const catRes = await supabase.from('inventory_categories').select('id').eq('code',activeCat).single();
-                const res = await api.post('/inventory/items', { ...data, category_id: catRes.data?.id });
-                const newItem = res.data?.item;
+                const { qty_chemical_store, qty_main_lab, qty_det_lab, ...itemData } = data;
+
+const res = await api.post('/inventory/items', {
+  ...itemData,
+  category_id: catRes.data?.id,
+});
+
+const newItem = res.data?.item;
 
                 // Set initial quantities if provided
                 const locs = [
