@@ -59,6 +59,7 @@ export default function LoginPage() {
   if (role === 'Department Head' || role === 'Department Assistant') {
     if      (deptCode === 'REF') navigate('/dashboard/ref', { replace: true });
     else if (deptCode === 'FP')  navigate('/dashboard/fp',  { replace: true });
+    else if (deptCode === 'BOILER') navigate('/dashboard/boiler', { replace: true });
     else if (deptCode === 'SOAP') navigate('/dashboard/soap', { replace: true });
     else                         navigate('/dashboard/dept', { replace: true });
   } else {

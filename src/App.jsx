@@ -18,6 +18,7 @@ import SoapDashboardPage         from './pages/SoapDashboardPage';
 import QCHeadDashboardPage       from './pages/QCHeadDashboardPage';
 import ReportBooksPage           from './pages/ReportBooksPage';
 import InventoryPage             from './pages/InventoryPage';
+import BoilerDashboardPage       from './pages/BoilerDashboardPage';
 
 // ── Role-based dashboard selector ────────────────────────
 // QC Head and QC Assistant → new QC Head Dashboard
@@ -80,6 +81,12 @@ export default function App() {
           <Route path="/dashboard/ref" element={
             <ProtectedRoute roles={['Department Head','Department Assistant']}>
               <RefDashboardPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/dashboard/boiler" element={
+            <ProtectedRoute roles={['Department Head','Department Assistant']}>
+              <BoilerDashboardPage />
             </ProtectedRoute>
           } />
 
