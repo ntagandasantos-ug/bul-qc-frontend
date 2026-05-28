@@ -90,47 +90,75 @@ export default function BoilerDashboardPage() {
     reader.readAsDataURL(f);
   };
 
-  // ── Load results from Supabase ────────────────────────────
+  // ── Load results — two-step to avoid Supabase nested filter bug ──
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       const start = new Date(fromDate + 'T00:00:00+03:00').toISOString();
       const end   = new Date((useRange ? toDate : fromDate) + 'T23:59:59+03:00').toISOString();
 
-      const { data, error } = await supabase
+      // STEP 1 — Get registered_samples in date range
+      // Filter directly on registered_at (not nested) so Supabase actually filters
+      const { data: samples, error: sampErr } = await supabase
+        .from('registered_samples')
+        .select(`
+          id, sample_name, sample_number, status,
+          registered_at, sampler_name, batch_number, notes,
+          sample_types (
+            id, name, code,
+            sample_categories ( id, name, code )
+          )
+        `)
+        .gte('registered_at', start)
+        .lte('registered_at', end)
+        .order('registered_at', { ascending: false });
+
+      if (sampErr) throw sampErr;
+
+      // Keep only Boiler sample types
+      const boilerSamples = (samples || []).filter(s =>
+        ALL_BOILER.includes(s.sample_types?.code || '')
+      );
+
+      if (boilerSamples.length === 0) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
+
+      // STEP 2 — Get test assignments for those sample IDs
+      const sampleIds = boilerSamples.map(s => s.id);
+
+      const { data: assignments, error: assErr } = await supabase
         .from('sample_test_assignments')
         .select(`
           id, result_value, result_status, analyst_signature,
-          submitted_at, edit_count, is_locked,
+          submitted_at, edit_count, is_locked, sample_id,
           tests (
             id, name, code, unit, result_type, display_order,
             test_specifications ( min_value, max_value, display_spec )
-          ),
-          registered_samples (
-            id, sample_name, sample_number, status,
-            registered_at, sampler_name, batch_number, notes,
-            sample_types (
-              id, name, code,
-              sample_categories ( id, name, code )
-            )
           )
         `)
-        .gte('registered_samples.registered_at', start)
-        .lte('registered_samples.registered_at', end)
-        .order('registered_samples.registered_at', { ascending: false });
+        .in('sample_id', sampleIds);
 
-      if (error) throw error;
+      if (assErr) throw assErr;
 
-      const filtered = (data || []).filter(r =>
-        ALL_BOILER.includes(r.registered_samples?.sample_types?.code || '')
-      );
+      // STEP 3 — Combine: attach sample info onto each assignment row
+      const sampleMap = {};
+      boilerSamples.forEach(s => { sampleMap[s.id] = s; });
 
-      // OOS beep
-      const oosCount = filtered.filter(r => r.result_status==='fail_low'||r.result_status==='fail_high').length;
-      if (oosCount > prevOOS) { playBeep(); }
-      setPrevOOS(oosCount);
+      const combined = (assignments || [])
+        .map(a => ({ ...a, registered_samples: sampleMap[a.sample_id] || null }))
+        .filter(a => a.registered_samples);
 
-      setResults(filtered);
+      // OOS alert beep
+      const newOOS = combined.filter(r =>
+        r.result_status === 'fail_low' || r.result_status === 'fail_high'
+      ).length;
+      if (newOOS > prevOOS) playBeep();
+      setPrevOOS(newOOS);
+
+      setResults(combined);
     } catch(e) {
       console.error('Boiler load error:', e.message);
     } finally {
