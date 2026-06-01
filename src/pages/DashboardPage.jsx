@@ -214,7 +214,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        <button onClick={() => navigate('/register')}
+        <button onClick={() => navigate('/register-sample')}
           style={{ padding:'9px 20px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', boxShadow:'0 2px 8px rgba(107,33,168,0.25)', whiteSpace:'nowrap' }}>
           + Register Sample
         </button>
@@ -295,7 +295,7 @@ export default function DashboardPage() {
             <div style={{ fontSize:'40px', marginBottom:'12px' }}>🔬</div>
             <div style={{ fontWeight:'700', fontSize:'15px', color:'#475569' }}>No samples found</div>
             <div style={{ fontSize:'12px', marginTop:'4px' }}>Try adjusting your filters or register a new sample</div>
-            <button onClick={()=>navigate('/register')} style={{ marginTop:'14px', padding:'8px 20px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
+            <button onClick={()=>navigate('/register-sample')} style={{ marginTop:'14px', padding:'8px 20px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
               + Register Sample
             </button>
           </div>
