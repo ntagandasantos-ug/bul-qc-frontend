@@ -1,772 +1,389 @@
 // ============================================================
-// FILE: frontend/bul-qc-app/src/pages/AnalysisPage.jsx
-// FIX: Update button works, locks after 2 edits
+// FILE: src/pages/AnalysisPage.jsx  (desktop-first redesign)
+// Two-column: left = sample info + analyst + submit all
+//             right = full inline results table
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar          from '../components/Navbar';
-import PageFooter      from '../components/PageFooter';
 import SampleEditModal from '../components/SampleEditModal';
 import { useAuth }     from '../context/AuthContext';
+import { supabase }    from '../services/supabase';
 import api             from '../services/api';
+import { format }      from 'date-fns';
 import { toast }       from 'react-toastify';
 
 const P  = '#6B21A8';
 const PM = '#7C3AED';
 const PL = '#EDE9FE';
 const G  = '#FFB81C';
+const GR = '#16A34A';
+const RD = '#DC2626';
+
+function evaluate(value, spec, resultType) {
+  if (!value?.trim()) return { status: null, pass: null };
+  if (resultType === 'text') {
+    if (!spec?.display_spec) return { status: 'text_ok', pass: true };
+    const v = value.toLowerCase().trim();
+    const s = spec.display_spec.toLowerCase().trim();
+    let pass = true;
+    if (s === 'pink')    pass = v === 'pink';
+    else if (s === 'black')  pass = v === 'black';
+    else if (s === 'nil')    pass = v === 'nil';
+    else if (s.includes('yellow')) pass = v === 'yellow' || v === 'light yellow';
+    else if (s === 'to pass the test') pass = v === 'to pass the test';
+    else if (s === 'negative') pass = v === 'negative';
+    return { status: pass ? 'pass' : 'fail_high', pass };
+  }
+  const num = parseFloat(value);
+  if (isNaN(num)) return { status: 'text_ok', pass: true };
+  if (spec?.min_value != null && num < parseFloat(spec.min_value)) return { status: 'fail_low',  pass: false };
+  if (spec?.max_value != null && num > parseFloat(spec.max_value)) return { status: 'fail_high', pass: false };
+  return { status: 'pass', pass: true };
+}
+
+const STATUS_ROW = {
+  pass     : { bg: '#DCFCE7', color: GR,       label: 'PASS'   },
+  fail_low : { bg: '#FEF2F2', color: RD,       label: 'FAIL ↓' },
+  fail_high: { bg: '#FEF2F2', color: RD,       label: 'FAIL ↑' },
+  text_ok  : { bg: '#EFF6FF', color: '#1D4ED8',label: 'OK'     },
+};
 
 export default function AnalysisPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
   const { user, signingAs } = useAuth();
 
-  const [sample,       setSample]      = useState(null);
-  const [loading,      setLoading]     = useState(true);
-  const [error,        setError]       = useState('');
-  const [tests,        setTests]       = useState([]);
-  const [selectedIds,  setSelectedIds] = useState([]);
-  const [step,         setStep]        = useState('confirm');
-  const [results,      setResults]     = useState({});
-  const [analyst,      setAnalyst]     = useState(signingAs || '');
-  const [saving,       setSaving]      = useState({});
-  const [savingAll,    setSavingAll]   = useState(false);
-  const [staffList,    setStaffList]   = useState([]);
-  const [removingTest, setRemovingTest]= useState(null);
-  const [showEdit,     setShowEdit]    = useState(false);
+  const [sample,    setSample]   = useState(null);
+  const [loading,   setLoading]  = useState(true);
+  const [analyst,   setAnalyst]  = useState(signingAs || user?.full_name || '');
+  const [staff,     setStaff]    = useState([]);
+  const [vals,      setVals]     = useState({});
+  const [subs,      setSubs]     = useState({});
+  const [saving,    setSaving]   = useState({});
+  const [savingAll, setSavingAll]= useState(false);
+  const [showEdit,  setShowEdit] = useState(false);
+  const [removing,  setRemoving] = useState(null);
+  const inputRefs = useRef({});
 
-  // ── Load sample ─────────────────────────────────────────
   const loadSample = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
     try {
-      const res = await api.get(`/samples/${id}`);
-      const s   = res.data?.sample || res.data;
-      if (!s?.id) { setError('Sample not found.'); return; }
-      setSample(s);
-
-      const assigned = s.sample_test_assignments || [];
-      if (assigned.length > 0) {
-        setStep('enter');
-        const init = {};
-        assigned.forEach(a => {
-          init[a.id] = {
-            value    : a.result_value        || '',
-            locked   : a.is_locked           || false,
-            editCount: a.edit_count          || 0,
-            submitted: !!a.result_value,
-            status   : a.result_status       || '',
-            remarks  : a.remarks             || '',
-            subAt    : a.submitted_at        || null,
-            analyst  : a.analyst_signature   || '',
+      const { data, error } = await supabase
+        .from('registered_samples')
+        .select(`
+          id, sample_name, sample_number, status,
+          registered_at, sampler_name, batch_number, notes,
+          departments(id, name, code),
+          sample_types(id, name, code),
+          sample_subtypes(id, name),
+          sample_test_assignments(
+            id, result_value, result_status, analyst_signature,
+            submitted_at, edit_count, is_locked,
+            tests(
+              id, name, code, unit, result_type, display_order,
+              test_specifications(id, min_value, max_value, display_spec)
+            )
+          )
+        `)
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      setSample(data);
+      const iv = {}; const is_ = {};
+      for (const a of data?.sample_test_assignments || []) {
+        if (a.result_value) {
+          iv[a.id]  = a.result_value;
+          is_[a.id] = {
+            value: a.result_value, status: a.result_status,
+            analyst: a.analyst_signature, time: a.submitted_at,
+            editCount: a.edit_count || 0,
+            locked: a.is_locked || (a.edit_count || 0) >= 2,
           };
-        });
-        setResults(init);
+        }
       }
-
-      if (s.sample_types?.id) {
-        const tRes = await api.get(`/lookup/tests/${s.sample_types.id}`);
-        const tData = tRes.data?.tests || [];
-        setTests(tData);
-        setSelectedIds(tData.map(t => t.id));
-      }
-    } catch (err) {
-      const msg = err.response?.data?.error || 'Failed to load sample';
-      setError(msg); toast.error(msg);
-    } finally { setLoading(false); }
+      setVals(iv); setSubs(is_);
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
   }, [id]);
 
   useEffect(() => { loadSample(); }, [loadSample]);
 
   useEffect(() => {
-    api.get('/lookup/staff').then(res => {
-      setStaffList(res.data?.staff || []);
-    }).catch(() => {});
+    supabase.from('app_users').select('id, full_name, username').eq('is_active', true).order('full_name')
+      .then(({ data }) => setStaff(data || []));
   }, []);
 
-  // ── Remove a test (only if no result submitted) ───────────
-  const removeTest = async (assignmentId, testName) => {
-    if (!window.confirm(`Remove "${testName}" from this sample? This cannot be undone.`)) return;
-    setRemovingTest(assignmentId);
+  const assignments = [...(sample?.sample_test_assignments || [])]
+    .sort((a, b) => (a.tests?.display_order || 0) - (b.tests?.display_order || 0));
+
+  const submitOne = async (a) => {
+    if (!analyst.trim()) { toast.warning('Select analyst first'); return; }
+    const v = vals[a.id]?.trim();
+    if (!v) { toast.warning('Enter a value'); return; }
+    const spec = a.tests?.test_specifications?.[0];
+    const { status } = evaluate(v, spec, a.tests?.result_type);
+    setSaving(p => ({ ...p, [a.id]: true }));
     try {
-      await api.delete(`/samples/assignment/${assignmentId}`);
-      toast.success(`✅ ${testName} removed from this sample`);
+      await api.put(`/results/${a.id}`, { result_value: v, analyst_signature: analyst.trim(), result_status: status, submitted_at: new Date().toISOString() });
+      setSubs(p => ({ ...p, [a.id]: { value: v, status, analyst: analyst.trim(), time: new Date().toISOString(), editCount: (p[a.id]?.editCount || 0) + 1, locked: ((p[a.id]?.editCount || 0) + 1) >= 2 } }));
       await loadSample();
-    } catch(err) {
-      toast.error(err.response?.data?.error || 'Failed to remove test');
-    } finally { setRemovingTest(null); }
+    } catch(e) { toast.error(e.response?.data?.error || e.message); }
+    finally { setSaving(p => ({ ...p, [a.id]: false })); }
   };
 
-  // ── Submit ALL results at once ────────────────────────────
-  const submitAllResults = async () => {
-    if (!analyst.trim()) { toast.warning('Select your name as the analyst first'); return; }
-
-    const assignments = (sample?.sample_test_assignments || [])
-      .filter(a => {
-        const r = results[a.id] || {};
-        // Only submit ones that have a value and are not locked
-        return r.value?.trim() && !(r.locked || r.editCount >= 2);
-      });
-
-    if (assignments.length === 0) {
-      toast.warning('No results to submit. Enter values in the fields first.');
-      return;
-    }
-
+  const submitAll = async () => {
+    if (!analyst.trim()) { toast.warning('Select analyst first'); return; }
+    const toSub = assignments.filter(a => vals[a.id]?.trim() && !subs[a.id]?.locked);
+    if (!toSub.length) { toast.warning('No values to submit'); return; }
     setSavingAll(true);
-    let successCount = 0;
-    let oosCount     = 0;
-
+    let ok = 0; let oos = 0;
     try {
-      for (const assignment of assignments) {
-        const r  = results[assignment.id] || {};
-        const ev = evaluate(r.value, assignment);
-
+      for (const a of toSub) {
+        const v = vals[a.id].trim();
+        const spec = a.tests?.test_specifications?.[0];
+        const { status } = evaluate(v, spec, a.tests?.result_type);
         try {
-          await api.put(`/results/${assignment.id}`, {
-            result_value      : r.value.trim(),
-            analyst_signature : analyst.trim(),
-            result_status     : ev.status,
-            remarks           : ev.remarks,
-            action            : ev.action,
-            submitted_at      : new Date().toISOString(),
-          });
-
-          const isOOS = ev.status === 'fail_low' || ev.status === 'fail_high';
-          if (isOOS) oosCount++;
-          successCount++;
-
-          // Update local state
-          setResults(prev => ({
-            ...prev,
-            [assignment.id]: {
-              ...prev[assignment.id],
-              submitted: true,
-              status   : ev.status,
-              remarks  : ev.remarks,
-              subAt    : new Date().toISOString(),
-              analyst  : analyst.trim(),
-              editCount: (prev[assignment.id]?.editCount || 0),
-            },
-          }));
-        } catch(err) {
-          console.error(`Failed to submit ${assignment.tests?.name}:`, err.message);
-        }
+          await api.put(`/results/${a.id}`, { result_value: v, analyst_signature: analyst.trim(), result_status: status, submitted_at: new Date().toISOString() });
+          setSubs(p => ({ ...p, [a.id]: { value: v, status, analyst: analyst.trim(), time: new Date().toISOString(), editCount: (p[a.id]?.editCount || 0) + 1, locked: ((p[a.id]?.editCount || 0) + 1) >= 2 } }));
+          if (status === 'fail_low' || status === 'fail_high') oos++; else ok++;
+        } catch(e) { console.error(e); }
       }
-
-      if (oosCount > 0) {
-        toast.error(`⚠️ ${successCount} result(s) submitted — ${oosCount} OUT OF SPEC`);
-      } else {
-        toast.success(`✅ ${successCount} result(s) submitted successfully`);
-      }
-
+      toast[oos > 0 ? 'error' : 'success'](`✅ ${ok + oos} submitted${oos > 0 ? ` — ⚠️ ${oos} OOS` : ''}`);
       await loadSample();
-    } finally {
-      setSavingAll(false);
-    }
+    } finally { setSavingAll(false); }
   };
 
-  // ── Evaluate result against spec ─────────────────────────
-  const evaluate = (value, assignment) => {
-    const spec = assignment.tests?.test_specifications?.[0];
-    const rt   = assignment.tests?.result_type;
-    if (!value?.trim()) return { status:'', remarks:'', action:'' };
-
-    if (rt === 'text') {
-      const v = value.trim().toLowerCase();
-      if (v === 'negative' || v === 'nil')
-        return { status:'ok', remarks:'OK', action:'Pass' };
-      if (v === 'positive' || v === 'traces')
-        return { status:'fail_high', remarks:'FAIL', action:'Reject' };
-      return { status:'text_ok', remarks:'OK', action:'Pass' };
-    }
-
-    const num = parseFloat(value);
-    if (isNaN(num)) return { status:'text_ok', remarks:'OK', action:'Pass' };
-    if (!spec) return { status:'pass', remarks:'OK', action:'Pass' };
-    if (spec.min_value !== null && num < parseFloat(spec.min_value))
-      return { status:'fail_low',  remarks:'LOW',  action:'Adjust' };
-    if (spec.max_value !== null && num > parseFloat(spec.max_value))
-      return { status:'fail_high', remarks:'HIGH', action:'Adjust' };
-    return { status:'pass', remarks:'OK', action:'Pass' };
+  const removeTest = async (aId, name) => {
+    if (!window.confirm(`Remove "${name}"?`)) return;
+    setRemoving(aId);
+    try { await api.delete(`/samples/assignment/${aId}`); toast.success(`${name} removed`); await loadSample(); }
+    catch(e) { toast.error(e.response?.data?.error || e.message); }
+    finally { setRemoving(null); }
   };
 
-  // ── Confirm tests ────────────────────────────────────────
-  const confirmTests = async () => {
-    if (selectedIds.length === 0) { toast.warning('Select at least one test'); return; }
-    try {
-      await api.post('/samples/assign-tests', { sample_id: id, test_ids: selectedIds });
-      await loadSample();
-      setStep('enter');
-      toast.success('Tests confirmed. Enter results below.');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to confirm tests');
-    }
-  };
+  const totalN  = assignments.length;
+  const subN    = Object.keys(subs).length;
+  const oosN    = Object.values(subs).filter(s => s.status === 'fail_low' || s.status === 'fail_high').length;
+  const filledN = assignments.filter(a => vals[a.id]?.trim() && !subs[a.id]?.value).length;
+  const allDone = totalN > 0 && subN === totalN;
+  const pct     = totalN > 0 ? Math.round((subN / totalN) * 100) : 0;
+  const canAll  = analyst.trim() && assignments.some(a => vals[a.id]?.trim() && !subs[a.id]?.locked);
 
-  // ── Submit / Update a result ─────────────────────────────
-  const submitResult = async (assignmentId, assignment) => {
-    const r = results[assignmentId];
+  const sttCfg = {
+    pending    : { color: '#64748B', bg: '#F1F5F9', label: 'Pending'     },
+    in_progress: { color: '#D97706', bg: '#FFFBEB', label: 'In Progress' },
+    complete   : { color: GR,        bg: '#ECFDF5', label: 'Complete'    },
+    voided     : { color: RD,        bg: '#FEF2F2', label: 'Voided'      },
+  }[sample?.status] || { color: '#64748B', bg: '#F1F5F9', label: '—' };
 
-    if (!r?.value?.trim()) { toast.warning('Enter a result value first'); return; }
-    if (!analyst.trim())   { toast.warning('Select your name as the analyst'); return; }
-
-    if (r.locked) {
-      toast.error('This result is locked — maximum 2 edits reached'); return;
-    }
-
-    // Check edit limit before submitting
-    // editCount tracks how many times it has been updated AFTER first submission
-    // First submit = editCount 0, 1st edit = editCount 1, 2nd edit = editCount 2 (locked)
-    if (r.submitted && r.editCount >= 2) {
-      toast.error('Maximum 2 updates reached. Result is now locked.');
-      setResults(prev => ({
-        ...prev,
-        [assignmentId]: { ...prev[assignmentId], locked: true },
-      }));
-      return;
-    }
-
-    setSaving(prev => ({ ...prev, [assignmentId]: true }));
-    try {
-      const ev = evaluate(r.value, assignment);
-      const res = await api.put(`/results/${assignmentId}`, {
-        result_value      : r.value.trim(),
-        analyst_signature : analyst.trim(),
-        result_status     : ev.status,
-        remarks           : ev.remarks,
-        action            : ev.action,
-        submitted_at      : new Date().toISOString(),
-      });
-
-      const newEditCount = res.data?.editCount ?? (r.editCount + (r.submitted ? 1 : 0));
-      const isNowLocked  = res.data?.isLocked  ?? (newEditCount >= 2);
-
-      setResults(prev => ({
-        ...prev,
-        [assignmentId]: {
-          ...prev[assignmentId],
-          submitted : true,
-          status    : ev.status,
-          remarks   : ev.remarks,
-          editCount : newEditCount,
-          locked    : isNowLocked,
-          subAt     : new Date().toISOString(),
-          analyst   : analyst.trim(),
-        },
-      }));
-
-      const isOOS = ev.status === 'fail_low' || ev.status === 'fail_high';
-      const wasUpdate = r.submitted;
-
-      if (isNowLocked) {
-        toast.info(`🔒 ${assignment.tests?.name}: Result locked after 2 updates`);
-      } else if (isOOS) {
-        toast.error(`⚠️ ${assignment.tests?.name}: ${ev.remarks} — Out of specification`);
-      } else {
-        toast.success(`✅ ${assignment.tests?.name}: ${wasUpdate ? 'Updated' : 'Submitted'} — ${ev.remarks}`);
-      }
-
-      await loadSample();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to submit result');
-    } finally {
-      setSaving(prev => ({ ...prev, [assignmentId]: false }));
-    }
-  };
-
-  // ── Colour helpers ───────────────────────────────────────
-  const getColor = (status) => ({
-    pass      :{ bg:'#F0FDF4', border:'#86EFAC', text:'#15803D' },
-    ok        :{ bg:'#F0FDF4', border:'#86EFAC', text:'#15803D' },
-    fail_low  :{ bg:'#FEF2F2', border:'#FECACA', text:'#DC2626' },
-    fail_high :{ bg:'#FEF2F2', border:'#FECACA', text:'#DC2626' },
-    text_ok   :{ bg:'#EFF6FF', border:'#BFDBFE', text:'#1D4ED8' },
-  })[status] || { bg:'#fff', border:PL, text:'#111827' };
-
-  const StatusBadge = ({ status }) => {
-    const c = {
-      pending    :{ bg:'#F3F4F6', text:'#6B7280' },
-      in_progress:{ bg:'#FFF7ED', text:'#EA580C' },
-      complete   :{ bg:'#F0FDF4', text:'#16A34A' },
-    }[status] || { bg:'#F3F4F6', text:'#6B7280' };
-    return (
-      <span style={{ padding:'3px 10px', borderRadius:'10px', fontSize:'12px', fontWeight:'700', background:c.bg, color:c.text }}>
-        {status?.replace('_',' ').toUpperCase()}
-      </span>
-    );
-  };
-
-  const inp = {
-    border:`1.5px solid ${PL}`, borderRadius:'8px',
-    padding:'9px 12px', fontSize:'14px',
-    fontFamily:'inherit', background:'#fff',
-    color:'#111827', cursor:'text', outline:'none',
-    boxSizing:'border-box',
-  };
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
+      <Navbar />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontWeight: '600', fontSize: '15px' }}>Loading sample...</div>
+    </div>
+  );
 
   return (
-    <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
+    <div style={{ height: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Navbar />
 
-      <div style={{ maxWidth:'800px', margin:'0 auto', padding:'20px 16px' }}>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '300px 1fr', overflow: 'hidden' }}>
 
-        {/* Back button */}
-        <button onClick={() => navigate('/dashboard')} style={{
-          display:'flex', alignItems:'center', gap:'8px',
-          padding:'8px 14px', border:`1.5px solid ${PL}`,
-          borderRadius:'10px', background:'#fff',
-          cursor:'pointer', fontSize:'13px', fontWeight:'600',
-          color:P, marginBottom:'16px', fontFamily:'inherit',
-        }}>
-          ← Back to Dashboard
-        </button>
-
-        {loading && (
-          <div style={{ textAlign:'center', padding:'80px' }}>
-            <div style={{ fontSize:'40px', marginBottom:'12px' }}>🔬</div>
-            <p style={{ color:PM, fontWeight:'600' }}>Loading sample...</p>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div style={{ background:'#FEF2F2', border:'1.5px solid #FECACA', borderRadius:'14px', padding:'24px', textAlign:'center' }}>
-            <div style={{ fontSize:'40px', marginBottom:'12px' }}>⚠️</div>
-            <p style={{ color:'#DC2626', fontWeight:'700', fontSize:'15px' }}>{error}</p>
-            <button onClick={loadSample} style={{ marginTop:'16px', padding:'10px 20px', background:PM, color:'#fff', border:'none', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit', fontWeight:'600' }}>
-              Try Again
+        {/* ══ LEFT: sample info ══ */}
+        <div style={{ background: '#fff', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9' }}>
+            <button onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', border: '1px solid #E2E8F0', borderRadius: '7px', background: '#F8FAFC', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ← Back
             </button>
           </div>
-        )}
 
-        {!loading && !error && sample && (
-          <>
-            {/* Sample info */}
-            <div style={{
-              background:'#fff', borderRadius:'16px',
-              border:`1.5px solid ${PL}`, padding:'18px 20px',
-              marginBottom:'16px',
-              boxShadow:'0 2px 8px rgba(107,33,168,0.06)',
-            }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'8px' }}>
-                <div>
-                  <h2 style={{ fontSize:'18px', fontWeight:'800', color:'#1F2937', margin:'0 0 4px' }}>
-                    {sample.sample_name}
-                  </h2>
-                  <p style={{ fontSize:'12px', color:PM, fontFamily:'monospace', margin:'0 0 8px', fontWeight:'700' }}>
-                    {sample.sample_number}
-                  </p>
-                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-                    <StatusBadge status={sample.status} />
-                    {sample.sample_types?.name && (
-                      <span style={{ padding:'3px 10px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', background:'#F5F3FF', color:PM }}>
-                        {sample.sample_types.name}
-                      </span>
-                    )}
-                    {sample.departments?.name && (
-                      <span style={{ padding:'3px 10px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', background:'#F0FDF4', color:'#16A34A' }}>
-                        {sample.departments.name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'6px' }}>
-                  {/* ── CORRECT SAMPLE BUTTON ── */}
-                  <button onClick={() => setShowEdit(true)}
-                    style={{ padding:'6px 14px', background:'#FFF7ED', color:'#EA580C', border:'1.5px solid #FED7AA', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:'5px' }}>
-                    ✏️ Correct This Sample
-                  </button>
-                  <div style={{ textAlign:'right', fontSize:'12px', color:'#6B7280' }}>
-                    {sample.registered_at && (
-                      <>
-                        <div>{new Date(sample.registered_at).toLocaleDateString()}</div>
-                        <div style={{ fontWeight:'700', color:PM }}>
-                          {new Date(sample.registered_at).toLocaleTimeString()}
-                        </div>
-                      </>
-                    )}
-                    {sample.sampler_name && (
-                      <div style={{ marginTop:'4px' }}>Sampler: <strong>{sample.sampler_name}</strong></div>
-                    )}
-                  </div>
-                </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+            <h2 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: '900', color: '#0F172A' }}>{sample?.sample_name}</h2>
+            <div style={{ fontFamily: 'monospace', fontSize: '12px', fontWeight: '700', color: PM, marginBottom: '8px' }}>{sample?.sample_number}</div>
+
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <span style={{ background: sttCfg.bg, color: sttCfg.color, padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>{sttCfg.label}</span>
+              {sample?.sample_types?.name && <span style={{ background: PL, color: P, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>{sample.sample_types.name}</span>}
+              {sample?.departments?.name  && <span style={{ background: '#ECFDF5', color: GR, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>{sample.departments.name}</span>}
+              {oosN > 0 && <span style={{ background: '#FEF2F2', color: RD, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '800', border: '1px solid #FECACA' }}>⚠️ {oosN} OOS</span>}
+            </div>
+
+            {/* Progress */}
+            <div style={{ background: '#F8FAFC', borderRadius: '9px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #E2E8F0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '5px' }}>
+                <span>Progress</span>
+                <span style={{ color: allDone ? GR : PM }}>{subN}/{totalN} ({pct}%)</span>
+              </div>
+              <div style={{ background: '#E2E8F0', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: allDone ? GR : oosN > 0 ? RD : `linear-gradient(90deg,${P},${PM})`, borderRadius: '4px', transition: 'width 0.3s' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
+                <span style={{ color: GR, fontWeight: '600' }}>✅ {subN} submitted</span>
+                {filledN > 0 && <span style={{ color: '#D97706', fontWeight: '600' }}>✏️ {filledN} filled</span>}
+                {oosN > 0 && <span style={{ color: RD, fontWeight: '700' }}>⚠️ {oosN} OOS</span>}
               </div>
             </div>
 
-            {/* STEP 1: Select tests */}
-            {step === 'confirm' && (
-              <div style={{ background:'#fff', borderRadius:'16px', border:`1.5px solid ${PL}`, padding:'20px' }}>
-                <h3 style={{ fontSize:'16px', fontWeight:'800', color:'#1F2937', marginBottom:'4px' }}>
-                  Step 1 — Select Tests
-                </h3>
-                <p style={{ fontSize:'13px', color:'#6B7280', marginBottom:'16px' }}>
-                  Tick all tests required for this sample then confirm.
-                </p>
-
-                {tests.length === 0 ? (
-                  <div style={{ textAlign:'center', padding:'40px', color:'#9CA3AF' }}>
-                    <p style={{ fontWeight:'600' }}>No tests found for {sample.sample_types?.name}</p>
-                    <p style={{ fontSize:'12px', marginTop:'4px' }}>Check that tests are configured in the database.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display:'flex', gap:'8px', marginBottom:'12px' }}>
-                      <button type="button" onClick={() => setSelectedIds(tests.map(t => t.id))}
-                        style={{ padding:'6px 14px', border:`1.5px solid ${PL}`, borderRadius:'8px', background:'#F5F3FF', color:P, fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
-                        Select All
-                      </button>
-                      <button type="button" onClick={() => setSelectedIds([])}
-                        style={{ padding:'6px 14px', border:'1.5px solid #E5E7EB', borderRadius:'8px', background:'#F9FAFB', color:'#6B7280', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
-                        Clear
-                      </button>
-                    </div>
-
-                    <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
-                      {tests.map(test => {
-                        const spec = test.test_specifications?.[0];
-                        const specStr = spec?.display_spec
-                          ? `(${spec.display_spec}) ${test.unit||''}`
-                          : spec?.min_value !== undefined
-                            ? `(${spec.min_value}–${spec.max_value}) ${test.unit||''}`
-                            : test.unit || '';
-                        const checked = selectedIds.includes(test.id);
-                        return (
-                          <label key={test.id} style={{
-                            display:'flex', alignItems:'center', gap:'12px',
-                            padding:'12px 14px', borderRadius:'10px',
-                            border: checked ? `1.5px solid ${PM}` : '1.5px solid #E5E7EB',
-                            background: checked ? '#F5F3FF' : '#FAFAFA',
-                            cursor:'pointer',
-                          }}>
-                            <input type="checkbox" checked={checked}
-                              onChange={e => {
-                                if (e.target.checked) setSelectedIds(prev => [...prev, test.id]);
-                                else setSelectedIds(prev => prev.filter(x => x !== test.id));
-                              }}
-                              style={{ width:'18px', height:'18px', cursor:'pointer', accentColor:PM }}
-                            />
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontWeight:'700', color:'#1F2937', fontSize:'14px' }}>{test.name}</div>
-                              {specStr && <div style={{ fontSize:'12px', color:PM, marginTop:'2px' }}>Spec: {specStr}</div>}
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    <button onClick={confirmTests} disabled={selectedIds.length === 0}
-                      style={{
-                        width:'100%', padding:'14px',
-                        background: selectedIds.length === 0 ? '#A78BFA' : `linear-gradient(135deg,${P},${PM})`,
-                        color:'#fff', border:'none', borderRadius:'12px',
-                        fontSize:'15px', fontWeight:'700',
-                        cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer',
-                        fontFamily:'inherit',
-                      }}>
-                      ✅ Confirm {selectedIds.length} Test(s) → Enter Results
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* STEP 2: Enter results */}
-            {step === 'enter' && (
-              <div style={{ background:'#fff', borderRadius:'16px', border:`1.5px solid ${PL}`, padding:'20px' }}>
-
-                {/* Header row with Submit All button */}
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'10px', flexWrap:'wrap', marginBottom:'4px' }}>
-                  <div>
-                    <h3 style={{ fontSize:'16px', fontWeight:'800', color:'#1F2937', margin:'0 0 4px' }}>
-                      Step 2 — Enter Results
-                    </h3>
-                    <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>
-                      Enter all values below then click <strong>Submit All</strong>, or submit each test individually.
-                      Max <strong>2 updates</strong> per result then locked.
-                    </p>
-                  </div>
-
-                  {/* ── SUBMIT ALL BUTTON ── */}
-                  <button
-                    onClick={submitAllResults}
-                    disabled={savingAll || !analyst.trim()}
-                    style={{
-                      padding     : '11px 22px',
-                      background  : savingAll || !analyst.trim()
-                        ? '#A78BFA'
-                        : 'linear-gradient(135deg,#0D9488,#059669)',
-                      color       : '#fff',
-                      border      : 'none',
-                      borderRadius: '12px',
-                      fontSize    : '14px',
-                      fontWeight  : '800',
-                      cursor      : savingAll || !analyst.trim() ? 'not-allowed' : 'pointer',
-                      fontFamily  : 'inherit',
-                      whiteSpace  : 'nowrap',
-                      boxShadow   : savingAll ? 'none' : '0 3px 10px rgba(13,148,136,0.35)',
-                      flexShrink  : 0,
-                      display     : 'flex',
-                      alignItems  : 'center',
-                      gap         : '7px',
-                    }}
-                    title={!analyst.trim() ? 'Select analyst name first' : 'Submit all entered results at once'}
-                  >
-                    {savingAll ? (
-                      <>⏳ Submitting...</>
-                    ) : (
-                      <>✅ Submit All Results</>
-                    )}
-                  </button>
+            {/* Meta info */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', marginBottom: '12px' }}>
+              {[
+                ['Date', sample?.registered_at ? format(new Date(sample.registered_at), 'dd/MM/yy HH:mm') : '—'],
+                ['Sampler', sample?.sampler_name || '—'],
+                ['Batch', sample?.batch_number || '—'],
+                ['Notes', sample?.notes || '—'],
+              ].map(([k, v]) => (
+                <div key={k} style={{ background: '#F8FAFC', borderRadius: '6px', padding: '6px 9px', border: '1px solid #F1F5F9' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1px' }}>{k}</div>
+                  <div style={{ fontWeight: '600', color: '#1E293B', fontSize: '11px', wordBreak: 'break-word' }}>{v}</div>
                 </div>
+              ))}
+            </div>
 
-                {/* Progress hint */}
-                {(() => {
-                  const all  = sample?.sample_test_assignments || [];
-                  const done = all.filter(a => (results[a.id]?.submitted));
-                  const pending = all.filter(a => !(results[a.id]?.submitted) && !results[a.id]?.locked);
-                  const filled = pending.filter(a => results[a.id]?.value?.trim());
-                  return pending.length > 0 ? (
-                    <div style={{ background:'#F5F3FF', borderRadius:'8px', padding:'7px 12px', marginBottom:'16px', fontSize:'12px', color:'#4C1D95', display:'flex', gap:'12px', flexWrap:'wrap' }}>
-                      <span>✅ {done.length} submitted</span>
-                      <span>✏️ {filled.length} filled, not yet submitted</span>
-                      <span style={{ color:'#9CA3AF' }}>⏳ {pending.length - filled.length} empty</span>
-                    </div>
-                  ) : null;
-                })()}
+            <button onClick={() => setShowEdit(true)} style={{ width: '100%', padding: '8px', background: '#FFF7ED', color: '#D97706', border: '1px solid #FED7AA', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '10px' }}>
+              ✏️ Correct This Sample
+            </button>
 
-                {/* Analyst selector */}
-                <div style={{ marginBottom:'20px' }}>
-                  <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:'#4C1D95', marginBottom:'5px' }}>
-                    Analyst Signature *
-                  </label>
-                  <select value={analyst} onChange={e => setAnalyst(e.target.value)}
-                    style={{ ...inp, width:'100%', cursor:'pointer' }}>
-                    <option value="">— Select your name —</option>
-                    {staffList.map(s => (
-                      <option key={s.id} value={s.full_name}>{s.full_name}</option>
-                    ))}
-                    {signingAs && !staffList.find(s => s.full_name === signingAs) && (
-                      <option value={signingAs}>{signingAs}</option>
-                    )}
-                  </select>
-                </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#4C1D95', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Analyst Signature *</label>
+              <select value={analyst} onChange={e => setAnalyst(e.target.value)}
+                style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '8px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', cursor: 'pointer' }}>
+                <option value="">— Select analyst —</option>
+                {staff.map(s => <option key={s.id} value={s.full_name || s.username}>{s.full_name || s.username}</option>)}
+              </select>
+            </div>
+          </div>
 
-                {/* Result rows */}
-                <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-                  {(sample.sample_test_assignments || [])
-                    .sort((a,b) => (a.tests?.display_order||0)-(b.tests?.display_order||0))
-                    .map(assignment => {
-                      const r   = results[assignment.id] || {};
-                      const cs  = r.submitted ? getColor(r.status) : { bg:'#fff', border:PL, text:'#111827' };
-                      const spec = assignment.tests?.test_specifications?.[0];
-                      const specStr = spec?.display_spec
-                        ? `(${spec.display_spec})`
-                        : spec?.min_value !== undefined
-                          ? `(${spec.min_value}–${spec.max_value})`
-                          : '';
+          {/* Submit all */}
+          <div style={{ padding: '10px 14px', borderTop: '1px solid #E2E8F0', background: '#FAFBFC' }}>
+            <button onClick={submitAll} disabled={savingAll || !canAll}
+              style={{ width: '100%', padding: '11px', background: canAll ? 'linear-gradient(135deg,#0D9488,#059669)' : '#CBD5E1', color: '#fff', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: '800', cursor: canAll ? 'pointer' : 'not-allowed', fontFamily: 'inherit', boxShadow: canAll ? '0 2px 8px rgba(5,150,105,0.25)' : 'none', transition: 'all 0.2s' }}>
+              {savingAll ? '⏳ Saving...' : '✅ Submit All Results'}
+            </button>
+            {!analyst.trim() && <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center', margin: '5px 0 0' }}>Select analyst above first</p>}
+          </div>
+        </div>
 
-                      const isSaving  = saving[assignment.id];
-                      const isLocked  = r.locked || r.editCount >= 2;
-                      const editsLeft = isLocked ? 0 : r.submitted ? (2 - r.editCount) : null;
+        {/* ══ RIGHT: results table ══ */}
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>Results Entry</h3>
+              <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8', marginTop: '1px' }}>{totalN} tests · max 2 updates per result then locked · press Enter to submit</p>
+            </div>
+            {allDone && <span style={{ background: '#ECFDF5', color: GR, padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', border: '1px solid #A7F3D0' }}>✅ All Complete</span>}
+          </div>
 
-                      return (
-                        <div key={assignment.id} style={{
-                          border:`2px solid ${isLocked ? '#E5E7EB' : cs.border}`,
-                          borderRadius:'12px',
-                          background: isLocked ? '#F9FAFB' : cs.bg,
-                          padding:'14px 16px',
-                        }}>
-                          {/* Header */}
-                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', flexWrap:'wrap', gap:'6px' }}>
-                            <div>
-                              <div style={{ fontWeight:'800', fontSize:'14px', color: isLocked ? '#9CA3AF' : '#1F2937' }}>
-                                {assignment.tests?.name}
-                                {isLocked && <span style={{ marginLeft:'8px', fontSize:'16px' }}>🔒</span>}
-                              </div>
-                              <div style={{ display:'flex', gap:'6px', marginTop:'3px', flexWrap:'wrap', alignItems:'center' }}>
-                                {specStr && (
-                                  <span style={{ fontSize:'12px', color:G, fontWeight:'700' }}>
-                                    Spec: {specStr} {assignment.tests?.unit||''}
-                                  </span>
-                                )}
-                                {r.submitted && (
-                                  <span style={{
-                                    fontSize:'11px', fontWeight:'700',
-                                    color: isLocked ? '#DC2626' : editsLeft <= 1 ? '#EA580C' : '#16A34A',
-                                    background: isLocked ? '#FEF2F2' : editsLeft <= 1 ? '#FFF7ED' : '#F0FDF4',
-                                    padding:'1px 7px', borderRadius:'10px',
-                                    border:`1px solid ${isLocked ? '#FECACA' : editsLeft <= 1 ? '#FED7AA' : '#86EFAC'}`,
-                                  }}>
-                                    {isLocked ? '🔒 Locked' : `${editsLeft} update(s) left`}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr>
+                  {[['Test','170px'],['Spec','110px'],['Unit','65px'],['Value','auto'],['Status','85px'],['Analyst','110px'],['Time','72px'],['','80px']].map(([h, w]) => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, width: w }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((a, i) => {
+                  const spec   = a.tests?.test_specifications?.[0];
+                  const sub    = subs[a.id];
+                  const val    = vals[a.id] || '';
+                  const locked = sub?.locked;
+                  const isText = a.tests?.result_type === 'text';
+                  const isExtra= ['Remarks', 'Action'].includes(a.tests?.name);
+                  const live   = val.trim() ? evaluate(val, spec, a.tests?.result_type) : null;
+                  const badge  = STATUS_ROW[sub?.status] || null;
+                  const isOOS  = sub?.status === 'fail_low' || sub?.status === 'fail_high';
+                  const rowBg  = isOOS ? '#FFF5F5' : i % 2 === 0 ? '#fff' : '#FAFBFC';
 
-                            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                              {r.submitted && (
-                                <span style={{
-                                  padding:'3px 10px', borderRadius:'10px',
-                                  fontSize:'11px', fontWeight:'800',
-                                  background:cs.bg, color:cs.text,
-                                  border:`1px solid ${cs.border}`,
-                                }}>
-                                  {r.remarks}
-                                </span>
-                              )}
-                              {/* ── REMOVE TEST BUTTON — only if no result submitted ── */}
-                              {!r.submitted && !isLocked && (
-                                <button
-                                  onClick={() => removeTest(assignment.id, assignment.tests?.name)}
-                                  disabled={removingTest === assignment.id}
-                                  title="Remove this test from the sample"
-                                  style={{
-                                    padding:'4px 10px', background:'#FEF2F2',
-                                    color:'#DC2626', border:'1px solid #FECACA',
-                                    borderRadius:'8px', fontSize:'11px', fontWeight:'700',
-                                    cursor:'pointer', fontFamily:'inherit',
-                                    display:'flex', alignItems:'center', gap:'3px',
-                                  }}>
-                                  {removingTest===assignment.id ? '...' : '🗑 Remove'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
+                  return (
+                    <tr key={a.id} style={{ background: rowBg }}
+                      onMouseEnter={e => { if (!isOOS) e.currentTarget.style.background = '#F5F3FF'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}>
 
-                          {/* Input + button */}
-                          <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
-                            <div style={{ flex:1 }}>
-                              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px' }}>
-                                Result {assignment.tests?.unit ? `(${assignment.tests.unit})` : ''}
-                              </label>
-                              <input
-                                type="text"
-                                value={r.value || ''}
-                                disabled={isLocked}
-                                onChange={e => setResults(prev => ({
-                                  ...prev,
-                                  [assignment.id]: { ...prev[assignment.id], value: e.target.value },
-                                }))}
-                                placeholder={
-                                  isLocked ? 'Locked — cannot edit'
-                                  : assignment.tests?.result_type === 'text'
-                                    ? 'e.g. Negative / Positive / NIL / Traces'
-                                    : `Enter value ${assignment.tests?.unit ? `in ${assignment.tests.unit}` : ''}`
-                                }
-                                style={{
-                                  ...inp, width:'100%',
-                                  borderColor: isLocked ? '#E5E7EB' : r.submitted ? cs.border : PL,
-                                  background : isLocked ? '#F3F4F6' : '#fff',
-                                  color      : isLocked ? '#9CA3AF' : '#111827',
-                                  cursor     : isLocked ? 'not-allowed' : 'text',
-                                }}
-                              />
-                            </div>
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', borderLeft: isOOS ? `3px solid ${RD}` : '3px solid transparent' }}>
+                        <div style={{ fontWeight: isExtra ? '500' : '700', color: isExtra ? '#94A3B8' : '#0F172A', fontSize: '13px' }}>{a.tests?.name}</div>
+                        {locked && <div style={{ fontSize: '10px', color: '#94A3B8' }}>🔒 Locked</div>}
+                      </td>
 
-                            <button
-                              onClick={() => submitResult(assignment.id, assignment)}
-                              disabled={isSaving || isLocked}
-                              style={{
-                                padding    : '10px 16px',
-                                background : isLocked
-                                  ? '#E5E7EB'
-                                  : isSaving
-                                    ? '#A78BFA'
-                                    : r.submitted
-                                      ? `linear-gradient(135deg,#0D9488,#059669)` // teal for update
-                                      : `linear-gradient(135deg,${P},${PM})`,
-                                color      : isLocked ? '#9CA3AF' : '#fff',
-                                border     : 'none',
-                                borderRadius:'10px',
-                                fontSize   : '13px',
-                                fontWeight : '700',
-                                cursor     : isLocked || isSaving ? 'not-allowed' : 'pointer',
-                                fontFamily : 'inherit',
-                                whiteSpace : 'nowrap',
-                                flexShrink : 0,
-                                minWidth   : '90px',
-                                boxShadow  : isLocked ? 'none' : '0 2px 6px rgba(0,0,0,0.15)',
-                              }}
-                            >
-                              {isLocked   ? '🔒 Locked'
-                               : isSaving ? '...'
-                               : r.submitted ? '✏️ Update'
-                               : '✅ Submit'}
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9' }}>
+                        {!isExtra && spec?.display_spec
+                          ? <span style={{ fontSize: '12px', color: G, fontWeight: '700', background: '#FFFBEB', padding: '2px 7px', borderRadius: '5px' }}>{spec.display_spec}</span>
+                          : <span style={{ color: '#CBD5E1', fontSize: '12px' }}>—</span>}
+                      </td>
+
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#94A3B8', fontSize: '12px' }}>{a.tests?.unit || '—'}</td>
+
+                      <td style={{ padding: '6px 12px', borderBottom: '1px solid #F1F5F9' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            ref={el => inputRefs.current[a.id] = el}
+                            type={isText || isExtra ? 'text' : 'number'}
+                            value={val}
+                            onChange={e => setVals(p => ({ ...p, [a.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter' && !locked && val.trim()) submitOne(a); }}
+                            disabled={locked}
+                            placeholder={locked ? 'Locked' : isText || isExtra ? 'Enter text...' : 'Enter value'}
+                            style={{
+                              flex: 1, minWidth: '110px',
+                              border: `1.5px solid ${locked ? '#E2E8F0' : live?.pass === false ? '#FECACA' : live?.pass === true ? '#86EFAC' : '#E2E8F0'}`,
+                              borderRadius: '7px', padding: '6px 10px', fontSize: '13px',
+                              fontFamily: 'inherit', background: locked ? '#F8FAFC' : '#fff',
+                              color: '#1E293B', outline: 'none', cursor: locked ? 'not-allowed' : 'text',
+                            }}
+                          />
+                          {val.trim() && !locked && live && (
+                            <div style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: live.pass === false ? RD : live.pass === true ? GR : '#94A3B8' }} />
+                          )}
+                          {!locked && (
+                            <button onClick={() => submitOne(a)} disabled={!val.trim() || saving[a.id]}
+                              style={{ padding: '5px 12px', background: !val.trim() ? '#E2E8F0' : sub?.value ? '#FFFBEB' : `linear-gradient(135deg,${P},${PM})`, color: !val.trim() ? '#94A3B8' : sub?.value ? '#D97706' : '#fff', border: sub?.value ? '1px solid #FED7AA' : 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700', cursor: !val.trim() ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {saving[a.id] ? '...' : sub?.value ? '✏️' : '✅'}
                             </button>
-                          </div>
-
-                          {/* Submission info */}
-                          {r.submitted && (
-                            <div style={{ fontSize:'11px', color:'#9CA3AF', marginTop:'6px', display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'4px' }}>
-                              <span>
-                                {r.analyst && `Analyst: ${r.analyst}`}
-                              </span>
-                              <span>
-                                {r.subAt && new Date(r.subAt).toLocaleString()}
-                              </span>
-                            </div>
                           )}
                         </div>
-                      );
-                    })}
-                </div>
+                      </td>
 
-                {/* Submit All Results button */}
-{(sample.sample_test_assignments||[]).some(a => {
-  const r = results[a.id] || {};
-  return r.value?.trim() && !r.submitted && !(r.locked || r.editCount >= 2);
-}) && (
-  <button
-    onClick={submitAllResults}
-    disabled={savingAll || !analyst.trim()}
-    style={{
-      width       : '100%',
-      marginTop   : '16px',
-      padding     : '15px',
-      background  : savingAll || !analyst.trim()
-        ? '#A78BFA'
-        : 'linear-gradient(135deg,#0D9488,#059669)',
-      color       : '#fff',
-      border      : 'none',
-      borderRadius: '12px',
-      fontSize    : '15px',
-      fontWeight  : '800',
-      cursor      : savingAll || !analyst.trim() ? 'not-allowed' : 'pointer',
-      fontFamily  : 'inherit',
-      boxShadow   : savingAll ? 'none' : '0 4px 12px rgba(13,148,136,0.35)',
-    }}
-  >
-    {savingAll ? '⏳ Saving all results...' : '✅ Save All Results at Once'}
-  </button>
-)}
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
+                        {badge ? <span style={{ background: badge.bg, color: badge.color, padding: '3px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap' }}>{badge.label}</span> : <span style={{ color: '#CBD5E1', fontSize: '11px' }}>—</span>}
+                      </td>
 
-                {/* Back to test selection (only if no results yet) */}
-                {(sample.sample_test_assignments||[]).every(a => !a.result_value) && (
-                  <button onClick={() => setStep('confirm')} style={{
-                    marginTop:'16px', padding:'10px 16px',
-                    border:`1.5px solid ${PL}`, borderRadius:'10px',
-                    background:'#fff', color:P, cursor:'pointer',
-                    fontFamily:'inherit', fontSize:'13px', fontWeight:'600',
-                  }}>
-                    ← Change Test Selection
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#64748B', fontSize: '11px', whiteSpace: 'nowrap' }}>{sub?.analyst || '—'}</td>
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#94A3B8', fontSize: '11px', whiteSpace: 'nowrap' }}>{sub?.time ? format(new Date(sub.time), 'HH:mm') : '—'}</td>
+
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
+                        {!sub?.value && !locked && (
+                          <button onClick={() => removeTest(a.id, a.tests?.name)} disabled={removing === a.id}
+                            style={{ padding: '3px 8px', background: '#FEF2F2', color: RD, border: '1px solid #FECACA', borderRadius: '5px', fontSize: '10px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {removing === a.id ? '...' : '🗑'}
+                          </button>
+                        )}
+                        {sub?.editCount > 0 && !locked && (
+                          <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '2px' }}>{2 - (sub.editCount || 0)} left</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ padding: '8px 20px', borderTop: '1px solid #E2E8F0', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ fontSize: '11px', color: '#94A3B8' }}>
+              Press <kbd style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', color: '#475569' }}>Enter</kbd> on any row to submit · green border = pass · red = OOS
+            </div>
+            <div style={{ fontSize: '12px', color: '#94A3B8' }}>
+              {totalN - subN} remaining
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── SAMPLE EDIT MODAL ── */}
       {showEdit && sample && (
-        <SampleEditModal
-          sample={sample}
-          onClose={() => setShowEdit(false)}
-          onSaved={() => { setShowEdit(false); loadSample(); }}
-        />
+        <SampleEditModal sample={sample} onClose={() => setShowEdit(false)} onSaved={() => { setShowEdit(false); loadSample(); }} />
       )}
-
-      <PageFooter />
     </div>
   );
 }
