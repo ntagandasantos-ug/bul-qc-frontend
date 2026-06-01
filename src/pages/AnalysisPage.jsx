@@ -65,6 +65,7 @@ export default function AnalysisPage() {
   const [savingAll, setSavingAll]= useState(false);
   const [showEdit,  setShowEdit] = useState(false);
   const [removing,  setRemoving] = useState(null);
+  const [manualAnalyst, setManualAnalyst] = useState(false);
   const inputRefs = useRef({});
 
   const loadSample = useCallback(async () => {
@@ -253,12 +254,40 @@ export default function AnalysisPage() {
             </button>
 
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#4C1D95', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Analyst Signature *</label>
-              <select value={analyst} onChange={e => setAnalyst(e.target.value)}
-                style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '8px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', cursor: 'pointer' }}>
-                <option value="">— Select analyst —</option>
-                {staff.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
-              </select>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.4px' }}>
+  Analyst Signature *
+</label>
+
+{!manualAnalyst ? (
+  <>
+    <select value={analyst} onChange={e => setAnalyst(e.target.value)}
+      style={{ width:'100%', border:'1.5px solid #E2E8F0', borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none', cursor:'pointer', marginBottom:'5px', boxSizing:'border-box' }}>
+      <option value="">— Select analyst —</option>
+      {staff.map(s => (
+        <option key={s.id} value={s.full_name}>{s.full_name}</option>
+      ))}
+    </select>
+    <button type="button" onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
+      style={{ background:'none', border:'none', color:'#7C3AED', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline', padding:0 }}>
+      + Not in list? Type name manually
+    </button>
+  </>
+) : (
+  <>
+    <input
+      type="text"
+      value={analyst}
+      onChange={e => setAnalyst(e.target.value)}
+      autoFocus
+      placeholder="Type analyst full name..."
+      style={{ width:'100%', border:'1.5px solid #7C3AED', borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none', boxSizing:'border-box', marginBottom:'5px' }}
+    />
+    <button type="button" onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
+      style={{ background:'none', border:'none', color:'#94A3B8', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline', padding:0 }}>
+      ← Back to dropdown list
+    </button>
+  </>
+)}
             </div>
           </div>
 
