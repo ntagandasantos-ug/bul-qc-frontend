@@ -111,9 +111,16 @@ export default function AnalysisPage() {
   useEffect(() => { loadSample(); }, [loadSample]);
 
   useEffect(() => {
-    supabase.from('app_users').select('id, full_name, username').eq('is_active', true).order('full_name')
-      .then(({ data }) => setStaff(data || []));
-  }, []);
+  const loadStaff = async () => {
+    try {
+      const res = await api.get('/lookup/staff?role=Analyst');
+      setStaff(res.data?.staff || []);
+    } catch(e) {
+      console.error('Failed to load staff:', e.message);
+    }
+  };
+  loadStaff();
+}, []);
 
   const assignments = [...(sample?.sample_test_assignments || [])]
     .sort((a, b) => (a.tests?.display_order || 0) - (b.tests?.display_order || 0));
@@ -250,7 +257,7 @@ export default function AnalysisPage() {
               <select value={analyst} onChange={e => setAnalyst(e.target.value)}
                 style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '8px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', cursor: 'pointer' }}>
                 <option value="">— Select analyst —</option>
-                {staff.map(s => <option key={s.id} value={s.full_name || s.username}>{s.full_name || s.username}</option>)}
+                {staff.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
               </select>
             </div>
           </div>
