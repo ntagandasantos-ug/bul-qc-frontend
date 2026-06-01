@@ -282,9 +282,38 @@ export default function AnalysisPage() {
       placeholder="Type analyst full name..."
       style={{ width:'100%', border:'1.5px solid #7C3AED', borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none', boxSizing:'border-box', marginBottom:'5px' }}
     />
+
+    {/* Save to list button — appears once name is typed */}
+    {analyst.trim().length > 1 && (
+      <button type="button"
+        onClick={async () => {
+          try {
+            const res = await api.post('/lookup/staff', {
+              full_name: analyst.trim(),
+              role     : 'Both',
+            });
+            const saved = res.data?.staff;
+            if (saved) {
+              setStaff(prev => {
+                const exists = prev.find(s => s.full_name === saved.full_name);
+                if (exists) return prev;
+                return [...prev, saved].sort((a,b) => a.full_name.localeCompare(b.full_name));
+              });
+            }
+            setManualAnalyst(false);
+            toast.success(`✅ ${analyst.trim()} saved to analyst list`);
+          } catch(e) {
+            toast.error('Failed to save: ' + (e.response?.data?.error || e.message));
+          }
+        }}
+        style={{ width:'100%', padding:'8px', background:'linear-gradient(135deg,#6B21A8,#7C3AED)', color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px' }}>
+        💾 Save "{analyst.trim()}" to analyst list
+      </button>
+    )}
+
     <button type="button" onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
       style={{ background:'none', border:'none', color:'#94A3B8', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline', padding:0 }}>
-      ← Back to dropdown list
+      ← Back to dropdown without saving
     </button>
   </>
 )}
