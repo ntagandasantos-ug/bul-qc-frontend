@@ -1,28 +1,26 @@
 // ============================================================
 // FILE: src/pages/DashboardPage.jsx
 // Modern LIMS Sample Tracking — desktop-first, data-dense
-// Table layout · compact stats · inline actions
+// Fixes: Type column removed · departments loaded independently
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar                   from '../components/Navbar';
-import SupervisorNotifications  from '../components/SupervisorNotifications';
-import SampleEditModal          from '../components/SampleEditModal';
-import { useAuth }              from '../context/AuthContext';
-import { samplesService }       from '../services/samples.service';
-import { supabase }             from '../services/supabase';
-import api                      from '../services/api';
+import Navbar                  from '../components/Navbar';
+import SupervisorNotifications from '../components/SupervisorNotifications';
+import SampleEditModal         from '../components/SampleEditModal';
+import { useAuth }             from '../context/AuthContext';
+import { supabase }            from '../services/supabase';
+import api                     from '../services/api';
 import { format, isToday, isYesterday, startOfWeek, parseISO } from 'date-fns';
 import { toast } from 'react-toastify';
 
-const P   = '#6B21A8';
-const PM  = '#7C3AED';
-const PL  = '#EDE9FE';
-const G   = '#FFB81C';
-const GR  = '#16A34A';
-const RD  = '#DC2626';
-const SL  = '#F8FAFC';
+const P  = '#6B21A8';
+const PM = '#7C3AED';
+const PL = '#EDE9FE';
+const GR = '#16A34A';
+const RD = '#DC2626';
+const SL = '#F8FAFC';
 
 const STATUS_CFG = {
   pending    : { dot:'#94A3B8', bg:'#F1F5F9', color:'#475569', label:'Pending'     },
@@ -58,8 +56,8 @@ const todayStr = () => format(new Date(),'yyyy-MM-dd');
 const wkStr    = () => format(startOfWeek(new Date(),{weekStartsOn:1}),'yyyy-MM-dd');
 
 export default function DashboardPage() {
-  const navigate  = useNavigate();
-  const { user }  = useAuth();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [samples,    setSamples]    = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -80,6 +78,14 @@ export default function DashboardPage() {
 
   const isSupervisor = ['QC Head','QC Assistant','Shift Supervisor'].includes(user?.roles?.name||'');
 
+  // ── Load all departments independently (not from samples) ─
+  useEffect(() => {
+    api.get('/lookup/departments')
+      .then(res => setDepts(res.data?.departments || []))
+      .catch(e => console.error('Dept load:', e.message));
+  }, []);
+
+  // ── Load samples ─────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -103,9 +109,6 @@ export default function DashboardPage() {
 
       if (error) throw error;
       setSamples(data || []);
-
-      const uniqueDepts = [...new Map((data||[]).map(s=>[s.departments?.id,s.departments]).filter(([k])=>k)).values()];
-      setDepts(uniqueDepts);
     } catch(e) {
       toast.error('Failed to load samples');
     } finally {
@@ -115,7 +118,7 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); setPage(1); }, [load]);
 
-  // Realtime
+  // Realtime updates
   useEffect(() => {
     const sub = supabase.channel('dash_rt')
       .on('postgres_changes',{event:'*',schema:'public',table:'registered_samples'},()=>load())
@@ -135,16 +138,16 @@ export default function DashboardPage() {
     } finally { setDeletingId(null); }
   };
 
-  // Filter + sort
+  // ── Filter + sort ─────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...samples];
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(s =>
-        s.sample_name?.toLowerCase().includes(q) ||
-        s.sample_number?.toLowerCase().includes(q) ||
+        s.sample_name?.toLowerCase().includes(q)     ||
+        s.sample_number?.toLowerCase().includes(q)   ||
         s.sample_types?.name?.toLowerCase().includes(q) ||
-        s.departments?.name?.toLowerCase().includes(q) ||
+        s.departments?.name?.toLowerCase().includes(q)  ||
         s.sampler_name?.toLowerCase().includes(q)
       );
     }
@@ -161,16 +164,15 @@ export default function DashboardPage() {
     return list;
   }, [samples, search, statusF, deptF, sortCol, sortDir]);
 
-  const paginated = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
+  const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
 
-  // Stats
   const stats = useMemo(() => ({
-    today    : samples.filter(s => isToday(parseISO(s.registered_at))).length,
-    pending  : samples.filter(s => s.status==='pending').length,
-    progress : samples.filter(s => s.status==='in_progress').length,
-    complete : samples.filter(s => s.status==='complete').length,
-    total    : samples.length,
+    today   : samples.filter(s => isToday(parseISO(s.registered_at))).length,
+    pending : samples.filter(s => s.status==='pending').length,
+    progress: samples.filter(s => s.status==='in_progress').length,
+    complete: samples.filter(s => s.status==='complete').length,
+    total   : samples.length,
   }), [samples]);
 
   const th = (label, col) => (
@@ -223,12 +225,10 @@ export default function DashboardPage() {
       {/* ── Filter bar ── */}
       <div style={{ background:'#fff', borderBottom:'1px solid #E2E8F0', padding:'10px 24px', display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
 
-        {/* Search */}
         <input type="text" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
-          placeholder="🔍  Search name, number, type, analyst..."
+          placeholder="🔍  Search name, number, department, analyst..."
           style={{ ...inp, minWidth:'260px', flex:2 }}/>
 
-        {/* Status */}
         <select value={statusF} onChange={e=>{setStatusF(e.target.value);setPage(1);}} style={{ ...selStyle, minWidth:'130px' }}>
           <option value="">All Statuses</option>
           <option value="pending">Pending</option>
@@ -236,22 +236,20 @@ export default function DashboardPage() {
           <option value="complete">Complete</option>
         </select>
 
-        {/* Department */}
-        <select value={deptF} onChange={e=>{setDeptF(e.target.value);setPage(1);}} style={{ ...selStyle, minWidth:'140px' }}>
+        <select value={deptF} onChange={e=>{setDeptF(e.target.value);setPage(1);}} style={{ ...selStyle, minWidth:'150px' }}>
           <option value="">All Departments</option>
           {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
 
-        {/* Date mode */}
         <div style={{ display:'flex', border:'1.5px solid #E2E8F0', borderRadius:'8px', overflow:'hidden' }}>
           {['single','range'].map(m => (
-            <button key={m} onClick={()=>{setDateMode(m);setPage(1);}} style={{ padding:'6px 12px', border:'none', background:dateMode===m?PM:'#fff', color:dateMode===m?'#fff':'#64748B', fontWeight:'700', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+            <button key={m} onClick={()=>{setDateMode(m);setPage(1);}}
+              style={{ padding:'6px 12px', border:'none', background:dateMode===m?PM:'#fff', color:dateMode===m?'#fff':'#64748B', fontWeight:'700', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
               {m==='single'?'Day':'Range'}
             </button>
           ))}
         </div>
 
-        {/* Date inputs */}
         <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}} style={{ ...inp, cursor:'pointer', minWidth:'130px' }}/>
         {dateMode==='range' && (
           <>
@@ -260,21 +258,22 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* Quick date buttons */}
         <div style={{ display:'flex', gap:'4px' }}>
           {[
             { label:'Today',     action:()=>{setDateFrom(todayStr());setDateTo(todayStr());setDateMode('single');} },
             { label:'Yesterday', action:()=>{ const d=format(new Date(Date.now()-86400000),'yyyy-MM-dd'); setDateFrom(d); setDateTo(d); setDateMode('single'); } },
             { label:'This Week', action:()=>{setDateFrom(wkStr());setDateTo(todayStr());setDateMode('range');} },
           ].map(b => (
-            <button key={b.label} onClick={b.action} style={{ padding:'5px 10px', border:'1.5px solid #E2E8F0', borderRadius:'7px', background:'#F8FAFC', color:'#475569', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+            <button key={b.label} onClick={b.action}
+              style={{ padding:'5px 10px', border:'1.5px solid #E2E8F0', borderRadius:'7px', background:'#F8FAFC', color:'#475569', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
               {b.label}
             </button>
           ))}
         </div>
 
         {(search||statusF||deptF) && (
-          <button onClick={()=>{setSearch('');setStatusF('');setDeptF('');setPage(1);}} style={{ padding:'5px 10px', border:'1.5px solid #FECACA', borderRadius:'7px', background:'#FEF2F2', color:RD, fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
+          <button onClick={()=>{setSearch('');setStatusF('');setDeptF('');setPage(1);}}
+            style={{ padding:'5px 10px', border:'1.5px solid #FECACA', borderRadius:'7px', background:'#FEF2F2', color:RD, fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
             ✕ Clear
           </button>
         )}
@@ -295,7 +294,8 @@ export default function DashboardPage() {
             <div style={{ fontSize:'40px', marginBottom:'12px' }}>🔬</div>
             <div style={{ fontWeight:'700', fontSize:'15px', color:'#475569' }}>No samples found</div>
             <div style={{ fontSize:'12px', marginTop:'4px' }}>Try adjusting your filters or register a new sample</div>
-            <button onClick={()=>navigate('/register-sample')} style={{ marginTop:'14px', padding:'8px 20px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
+            <button onClick={()=>navigate('/register-sample')}
+              style={{ marginTop:'14px', padding:'8px 20px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
               + Register Sample
             </button>
           </div>
@@ -305,24 +305,24 @@ export default function DashboardPage() {
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
                 <thead>
                   <tr>
-                    {th('Sample Name',    'sample_name')}
-                    {th('Number',         'sample_number')}
-                    <th style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Type</th>
+                    {th('Sample Name',  'sample_name')}
+                    {th('Number',       'sample_number')}
+                    {/* Type column removed */}
                     <th style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Department</th>
-                    {th('Status',         'status')}
+                    {th('Status',       'status')}
                     <th style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Progress</th>
-                    {th('Registered',     'registered_at')}
+                    {th('Registered',   'registered_at')}
                     <th style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Sampler</th>
                     <th style={{ padding:'9px 12px', textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.map((s, i) => {
-                    const total = (s.sample_test_assignments||[]).length;
-                    const done  = (s.sample_test_assignments||[]).filter(a=>a.result_value).length;
-                    const reg   = s.registered_at ? parseISO(s.registered_at) : null;
+                    const total   = (s.sample_test_assignments||[]).length;
+                    const done    = (s.sample_test_assignments||[]).filter(a=>a.result_value).length;
+                    const reg     = s.registered_at ? parseISO(s.registered_at) : null;
                     const dateStr = reg
-                      ? isToday(reg) ? `Today ${format(reg,'HH:mm')}`
+                      ? isToday(reg)     ? `Today ${format(reg,'HH:mm')}`
                       : isYesterday(reg) ? `Yesterday ${format(reg,'HH:mm')}`
                       : format(reg,'dd/MM/yy HH:mm')
                       : '—';
@@ -330,38 +330,34 @@ export default function DashboardPage() {
 
                     return (
                       <tr key={s.id}
-                        style={{ background: i%2===0?'#fff':'#FAFBFC', cursor:'pointer', transition:'background 0.1s' }}
+                        style={{ background:i%2===0?'#fff':'#FAFBFC', cursor:'pointer', transition:'background 0.1s' }}
                         onMouseEnter={e=>e.currentTarget.style.background='#F5F3FF'}
                         onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#FAFBFC'}>
 
                         {/* Sample name */}
-                        <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', maxWidth:'200px' }}>
+                        <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', maxWidth:'220px' }}>
                           <div style={{ fontWeight:'700', color:'#0F172A', fontSize:'13px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }} title={s.sample_name}>
                             {s.sample_name}
                           </div>
-                          {s.batch_number && <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'1px' }}>Batch: {s.batch_number}</div>}
+                          {s.batch_number && (
+                            <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'1px' }}>Batch: {s.batch_number}</div>
+                          )}
                         </td>
 
                         {/* Number */}
                         <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>
-                          <span style={{ fontFamily:'monospace', fontSize:'12px', color:PM, fontWeight:'700' }}>{s.sample_number}</span>
+                          <span style={{ fontFamily:'monospace', fontSize:'12px', color:PM, fontWeight:'700' }}>
+                            {s.sample_number}
+                          </span>
                         </td>
 
-                        {/* Type */}
-                        <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>
-                          <span style={{ fontSize:'12px', background:'#F5F3FF', color:P, padding:'2px 8px', borderRadius:'6px', fontWeight:'600' }}>
-                            {s.sample_types?.name||'—'}
-                          </span>
-                          {s.sample_subtypes?.name && (
-                            <span style={{ marginLeft:'4px', fontSize:'11px', background:'#FFF7ED', color:'#EA580C', padding:'1px 6px', borderRadius:'5px', fontWeight:'600' }}>
-                              {s.sample_subtypes.name}
-                            </span>
-                          )}
-                        </td>
+                        {/* Type column REMOVED */}
 
                         {/* Department */}
                         <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>
-                          <span style={{ fontSize:'12px', color:'#475569', fontWeight:'600' }}>{s.departments?.name||'—'}</span>
+                          <span style={{ fontSize:'12px', color:'#475569', fontWeight:'600' }}>
+                            {s.departments?.name||'—'}
+                          </span>
                         </td>
 
                         {/* Status */}
@@ -374,7 +370,7 @@ export default function DashboardPage() {
                           <ProgressBar done={done} total={total}/>
                         </td>
 
-                        {/* Date */}
+                        {/* Registered date */}
                         <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>
                           <span style={{ fontSize:'12px', color:'#64748B' }}>{dateStr}</span>
                         </td>
@@ -387,9 +383,10 @@ export default function DashboardPage() {
                         {/* Actions */}
                         <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9' }}>
                           <div style={{ display:'flex', gap:'5px', justifyContent:'center', flexWrap:'nowrap' }}>
-                            {/* Analyse / View / Continue */}
+
+                            {/* Analyse / Continue / View */}
                             <button onClick={()=>navigate(`/analysis/${s.id}`)}
-                              style={{ padding:'5px 12px', background: s.status==='complete'?'#ECFDF5':`linear-gradient(135deg,${P},${PM})`, color:s.status==='complete'?'#065F46':'#fff', border:s.status==='complete'?'1px solid #A7F3D0':'none', borderRadius:'7px', fontSize:'11px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                              style={{ padding:'5px 12px', background:s.status==='complete'?'#ECFDF5':`linear-gradient(135deg,${P},${PM})`, color:s.status==='complete'?'#065F46':'#fff', border:s.status==='complete'?'1px solid #A7F3D0':'none', borderRadius:'7px', fontSize:'11px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
                               {s.status==='complete'?'View':s.status==='in_progress'?'Continue':'Analyse'}
                             </button>
 
