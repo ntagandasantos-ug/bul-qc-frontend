@@ -1,7 +1,8 @@
 // ============================================================
-// FILE: src/pages/AnalysisPage.jsx
-// Step 1: Select tests to perform (checkbox list)
-// Step 2: Enter results (inline table)
+// FILE: src/pages/AnalysisPage.jsx  — Complete final version
+// Step 1: Select tests · Step 2: Enter results
+// Fixes: LeftPanel inlined (no dropdown close bug)
+//        Test confirm goes via backend API (no RLS error)
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -28,12 +29,12 @@ function evaluate(value, spec, resultType) {
     const v = value.toLowerCase().trim();
     const s = spec.display_spec.toLowerCase().trim();
     let pass = true;
-    if (s === 'pink')                   pass = v === 'pink';
-    else if (s === 'black')             pass = v === 'black';
-    else if (s === 'nil')               pass = v === 'nil';
-    else if (s.includes('yellow'))      pass = v === 'yellow' || v === 'light yellow';
-    else if (s === 'to pass the test')  pass = v === 'to pass the test';
-    else if (s === 'negative')          pass = v === 'negative';
+    if      (s === 'pink')                  pass = v === 'pink';
+    else if (s === 'black')                 pass = v === 'black';
+    else if (s === 'nil')                   pass = v === 'nil';
+    else if (s.includes('yellow'))          pass = v === 'yellow' || v === 'light yellow';
+    else if (s === 'to pass the test')      pass = v === 'to pass the test';
+    else if (s === 'negative')              pass = v === 'negative';
     return { status: pass ? 'pass' : 'fail_high', pass };
   }
   const num = parseFloat(value);
@@ -55,21 +56,22 @@ export default function AnalysisPage() {
   const navigate = useNavigate();
   const { user, signingAs } = useAuth();
 
-  const [sample,       setSample]       = useState(null);
-  const [loading,      setLoading]      = useState(true);
-  const [step,         setStep]         = useState('confirm'); // 'confirm' | 'enter'
-  const [allTests,     setAllTests]     = useState([]);
-  const [selectedIds,  setSelectedIds]  = useState([]);
-  const [confirming,   setConfirming]   = useState(false);
-  const [analyst,      setAnalyst]      = useState(signingAs || user?.full_name || '');
-  const [manualAnalyst,setManualAnalyst]= useState(false);
-  const [staff,        setStaff]        = useState([]);
-  const [vals,         setVals]         = useState({});
-  const [subs,         setSubs]         = useState({});
-  const [saving,       setSaving]       = useState({});
-  const [savingAll,    setSavingAll]    = useState(false);
-  const [showEdit,     setShowEdit]     = useState(false);
-  const [removing,     setRemoving]     = useState(null);
+  // ── State ─────────────────────────────────────────────────
+  const [sample,        setSample]        = useState(null);
+  const [loading,       setLoading]       = useState(true);
+  const [step,          setStep]          = useState('confirm');
+  const [allTests,      setAllTests]      = useState([]);
+  const [selectedIds,   setSelectedIds]   = useState([]);
+  const [confirming,    setConfirming]    = useState(false);
+  const [analyst,       setAnalyst]       = useState(signingAs || user?.full_name || '');
+  const [manualAnalyst, setManualAnalyst] = useState(false);
+  const [staff,         setStaff]         = useState([]);
+  const [vals,          setVals]          = useState({});
+  const [subs,          setSubs]          = useState({});
+  const [saving,        setSaving]        = useState({});
+  const [savingAll,     setSavingAll]     = useState(false);
+  const [showEdit,      setShowEdit]      = useState(false);
+  const [removing,      setRemoving]      = useState(null);
   const inputRefs = useRef({});
 
   // ── Load sample ───────────────────────────────────────────
@@ -102,7 +104,7 @@ export default function AnalysisPage() {
       const assignments = data?.sample_test_assignments || [];
 
       if (assignments.length === 0) {
-        // ── No assignments yet — go to Step 1 ────────────────
+        // Step 1 — load available tests
         const typeId = data?.sample_types?.id;
         if (typeId) {
           const { data: tests } = await supabase
@@ -115,11 +117,11 @@ export default function AnalysisPage() {
             .order('display_order');
           const t = tests || [];
           setAllTests(t);
-          setSelectedIds(t.map(x => x.id)); // all selected by default
+          setSelectedIds(t.map(x => x.id));
         }
         setStep('confirm');
       } else {
-        // ── Has assignments — go to Step 2 ───────────────────
+        // Step 2 — populate submitted results
         const iv = {}; const is_ = {};
         for (const a of assignments) {
           if (a.result_value) {
@@ -152,28 +154,31 @@ export default function AnalysisPage() {
   useEffect(() => {
     api.get('/lookup/staff?role=Analyst')
       .then(res => setStaff(res.data?.staff || []))
-      .catch(e => console.error('Staff load error:', e.message));
+      .catch(e => console.error('Staff load:', e.message));
   }, []);
 
-  // ── Confirm tests (Step 1 → Step 2) ──────────────────────
+  // ── Confirm tests (Step 1 → 2) via backend to avoid RLS ──
   const confirmTests = async () => {
     if (selectedIds.length === 0) { toast.warning('Select at least one test'); return; }
     setConfirming(true);
     try {
-      const { error } = await supabase
-        .from('sample_test_assignments')
-        .insert(selectedIds.map(testId => ({ sample_id: sample.id, test_id: testId })));
-      if (error) throw error;
-
-      await supabase
-        .from('registered_samples')
-        .update({ status: 'in_progress' })
-        .eq('id', sample.id);
-
+      // Use backend API — bypasses Supabase RLS restriction
+      await api.post(`/samples/${id}/assign-tests`, { test_ids: selectedIds });
       toast.success(`✅ ${selectedIds.length} test${selectedIds.length !== 1 ? 's' : ''} confirmed`);
       await loadSample();
     } catch(e) {
-      toast.error('Failed to confirm tests: ' + e.message);
+      // Fallback: try direct Supabase insert
+      try {
+        const { error } = await supabase
+          .from('sample_test_assignments')
+          .insert(selectedIds.map(testId => ({ sample_id: id, test_id: testId })));
+        if (error) throw error;
+        await supabase.from('registered_samples').update({ status: 'in_progress' }).eq('id', id);
+        toast.success(`✅ ${selectedIds.length} tests confirmed`);
+        await loadSample();
+      } catch(e2) {
+        toast.error('Failed to confirm tests: ' + (e2.message || e.message));
+      }
     } finally {
       setConfirming(false);
     }
@@ -200,10 +205,10 @@ export default function AnalysisPage() {
       setSubs(p => ({
         ...p,
         [a.id]: {
-          value    : v, status, analyst: analyst.trim(),
-          time     : new Date().toISOString(),
+          value: v, status, analyst: analyst.trim(),
+          time: new Date().toISOString(),
           editCount: (p[a.id]?.editCount || 0) + 1,
-          locked   : ((p[a.id]?.editCount || 0) + 1) >= 2,
+          locked: ((p[a.id]?.editCount || 0) + 1) >= 2,
         },
       }));
       await loadSample();
@@ -211,7 +216,7 @@ export default function AnalysisPage() {
     finally { setSaving(p => ({ ...p, [a.id]: false })); }
   };
 
-  // ── Submit all ────────────────────────────────────────────
+  // ── Submit all results ────────────────────────────────────
   const submitAll = async () => {
     if (!analyst.trim()) { toast.warning('Select analyst first'); return; }
     const toSub = assignments.filter(a => vals[a.id]?.trim() && !subs[a.id]?.locked);
@@ -249,7 +254,7 @@ export default function AnalysisPage() {
     } finally { setSavingAll(false); }
   };
 
-  // ── Remove a test ─────────────────────────────────────────
+  // ── Remove a test assignment ──────────────────────────────
   const removeTest = async (aId, name) => {
     if (!window.confirm(`Remove "${name}"?`)) return;
     setRemoving(aId);
@@ -277,7 +282,7 @@ export default function AnalysisPage() {
     voided     : { color: RD,        bg: '#FEF2F2', label: 'Voided'      },
   }[sample?.status]) || { color: '#64748B', bg: '#F1F5F9', label: '—' };
 
-  // ── Loading screen ────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
       <Navbar />
@@ -287,219 +292,231 @@ export default function AnalysisPage() {
     </div>
   );
 
-  // ── Left panel (shared between steps) ────────────────────
-  const LeftPanel = () => (
-    <div style={{ background: '#fff', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Back */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9' }}>
-        <button onClick={() => navigate(-1)}
-          style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', border: '1px solid #E2E8F0', borderRadius: '7px', background: '#F8FAFC', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
-          ← Back
-        </button>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-        {/* Sample name */}
-        <h2 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: '900', color: '#0F172A' }}>
-          {sample?.sample_name}
-        </h2>
-        <div style={{ fontFamily: 'monospace', fontSize: '12px', fontWeight: '700', color: PM, marginBottom: '8px' }}>
-          {sample?.sample_number}
-        </div>
-
-        {/* Status badges */}
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <span style={{ background: sttCfg.bg, color: sttCfg.color, padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
-            {sttCfg.label}
-          </span>
-          {sample?.sample_types?.name && (
-            <span style={{ background: PL, color: P, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
-              {sample.sample_types.name}
-            </span>
-          )}
-          {sample?.departments?.name && (
-            <span style={{ background: '#ECFDF5', color: GR, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
-              {sample.departments.name}
-            </span>
-          )}
-          {oosN > 0 && (
-            <span style={{ background: '#FEF2F2', color: RD, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '800', border: '1px solid #FECACA' }}>
-              ⚠️ {oosN} OOS
-            </span>
-          )}
-        </div>
-
-        {/* Progress (only in step 2) */}
-        {step === 'enter' && (
-          <div style={{ background: '#F8FAFC', borderRadius: '9px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '5px' }}>
-              <span>Progress</span>
-              <span style={{ color: allDone ? GR : PM }}>{subN}/{totalN} ({pct}%)</span>
-            </div>
-            <div style={{ background: '#E2E8F0', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: allDone ? GR : oosN > 0 ? RD : `linear-gradient(90deg,${P},${PM})`, borderRadius: '4px', transition: 'width 0.3s' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
-              <span style={{ color: GR, fontWeight: '600' }}>✅ {subN} submitted</span>
-              {filledN > 0 && <span style={{ color: '#D97706', fontWeight: '600' }}>✏️ {filledN} filled</span>}
-              {oosN > 0 && <span style={{ color: RD, fontWeight: '700' }}>⚠️ {oosN} OOS</span>}
-            </div>
-          </div>
-        )}
-
-        {/* Meta */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', marginBottom: '12px' }}>
-          {[
-            ['Date',    sample?.registered_at ? format(new Date(sample.registered_at), 'dd/MM/yy HH:mm') : '—'],
-            ['Sampler', sample?.sampler_name || '—'],
-            ['Batch',   sample?.batch_number || '—'],
-            ['Notes',   sample?.notes        || '—'],
-          ].map(([k, v]) => (
-            <div key={k} style={{ background: '#F8FAFC', borderRadius: '6px', padding: '6px 9px', border: '1px solid #F1F5F9' }}>
-              <div style={{ fontSize: '9px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1px' }}>{k}</div>
-              <div style={{ fontWeight: '600', color: '#1E293B', fontSize: '11px', wordBreak: 'break-word' }}>{v}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Correct sample */}
-        <button onClick={() => setShowEdit(true)}
-          style={{ width: '100%', padding: '8px', background: '#FFF7ED', color: '#D97706', border: '1px solid #FED7AA', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '10px' }}>
-          ✏️ Correct This Sample
-        </button>
-
-        {/* Analyst selector */}
-        <div>
-          <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#4C1D95', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-            Analyst Signature *
-          </label>
-
-          {!manualAnalyst ? (
-            <>
-              <select value={analyst} onChange={e => setAnalyst(e.target.value)}
-                style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '8px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', cursor: 'pointer', marginBottom: '5px', boxSizing: 'border-box' }}>
-                <option value="">— Select analyst —</option>
-                {staff.map(s => (
-                  <option key={s.id} value={s.full_name}>{s.full_name}</option>
-                ))}
-              </select>
-              <button type="button" onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
-                style={{ background: 'none', border: 'none', color: PM, fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
-                + Not in list? Type name manually
-              </button>
-            </>
-          ) : (
-            <>
-              <input type="text" value={analyst} onChange={e => setAnalyst(e.target.value)}
-                autoFocus placeholder="Type analyst full name..."
-                style={{ width: '100%', border: `1.5px solid ${PM}`, borderRadius: '8px', padding: '8px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', boxSizing: 'border-box', marginBottom: '5px' }}
-              />
-              {analyst.trim().length > 1 && (
-                <button type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await api.post('/lookup/staff', { full_name: analyst.trim(), role: 'Both' });
-                      const saved = res.data?.staff;
-                      if (saved) {
-                        setStaff(prev => {
-                          const exists = prev.find(s => s.full_name === saved.full_name);
-                          if (exists) return prev;
-                          return [...prev, saved].sort((a, b) => a.full_name.localeCompare(b.full_name));
-                        });
-                      }
-                      setManualAnalyst(false);
-                      toast.success(`✅ ${analyst.trim()} saved to analyst list`);
-                    } catch(e) {
-                      toast.error('Failed to save: ' + (e.response?.data?.error || e.message));
-                    }
-                  }}
-                  style={{ width: '100%', padding: '8px', background: `linear-gradient(135deg,${P},${PM})`, color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '5px' }}>
-                  💾 Save "{analyst.trim()}" to analyst list
-                </button>
-              )}
-              <button type="button" onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
-                style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
-                ← Back to dropdown without saving
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Submit All — only in step 2 */}
-      {step === 'enter' && (
-        <div style={{ padding: '10px 14px', borderTop: '1px solid #E2E8F0', background: '#FAFBFC' }}>
-          <button onClick={submitAll} disabled={savingAll || !canAll}
-            style={{ width: '100%', padding: '11px', background: canAll ? 'linear-gradient(135deg,#0D9488,#059669)' : '#CBD5E1', color: '#fff', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: '800', cursor: canAll ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s' }}>
-            {savingAll ? '⏳ Saving...' : '✅ Submit All Results'}
-          </button>
-          {!analyst.trim() && (
-            <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center', margin: '5px 0 0' }}>
-              Select analyst above first
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div style={{ height: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Navbar />
 
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '300px 1fr', overflow: 'hidden' }}>
 
-        <LeftPanel />
+        {/* ════════════════════════════════════════════════════
+            LEFT PANEL — inlined directly (not a sub-component)
+            to prevent dropdown closing on re-render
+        ════════════════════════════════════════════════════ */}
+        <div style={{ background: '#fff', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* ══════════════════════════════════════════════════
-            STEP 1 — Select tests
-        ══════════════════════════════════════════════════ */}
+          {/* Back */}
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
+            <button onClick={() => navigate(-1)}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', border: '1px solid #E2E8F0', borderRadius: '7px', background: '#F8FAFC', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ← Back
+            </button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+
+            {/* Sample name & number */}
+            <h2 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: '900', color: '#0F172A' }}>
+              {sample?.sample_name}
+            </h2>
+            <div style={{ fontFamily: 'monospace', fontSize: '12px', fontWeight: '700', color: PM, marginBottom: '8px' }}>
+              {sample?.sample_number}
+            </div>
+
+            {/* Badges */}
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <span style={{ background: sttCfg.bg, color: sttCfg.color, padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+                {sttCfg.label}
+              </span>
+              {sample?.sample_types?.name && (
+                <span style={{ background: PL, color: P, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
+                  {sample.sample_types.name}
+                </span>
+              )}
+              {sample?.departments?.name && (
+                <span style={{ background: '#ECFDF5', color: GR, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
+                  {sample.departments.name}
+                </span>
+              )}
+              {oosN > 0 && (
+                <span style={{ background: '#FEF2F2', color: RD, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '800', border: '1px solid #FECACA' }}>
+                  ⚠️ {oosN} OOS
+                </span>
+              )}
+            </div>
+
+            {/* Progress bar — step 2 only */}
+            {step === 'enter' && (
+              <div style={{ background: '#F8FAFC', borderRadius: '9px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '5px' }}>
+                  <span>Progress</span>
+                  <span style={{ color: allDone ? GR : PM }}>{subN}/{totalN} ({pct}%)</span>
+                </div>
+                <div style={{ background: '#E2E8F0', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: allDone ? GR : oosN > 0 ? RD : `linear-gradient(90deg,${P},${PM})`, borderRadius: '4px', transition: 'width 0.3s' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
+                  <span style={{ color: GR, fontWeight: '600' }}>✅ {subN} submitted</span>
+                  {filledN > 0 && <span style={{ color: '#D97706', fontWeight: '600' }}>✏️ {filledN} filled</span>}
+                  {oosN > 0 && <span style={{ color: RD, fontWeight: '700' }}>⚠️ {oosN} OOS</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Meta info */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', marginBottom: '12px' }}>
+              {[
+                ['Date',    sample?.registered_at ? format(new Date(sample.registered_at), 'dd/MM/yy HH:mm') : '—'],
+                ['Sampler', sample?.sampler_name || '—'],
+                ['Batch',   sample?.batch_number || '—'],
+                ['Notes',   sample?.notes        || '—'],
+              ].map(([k, v]) => (
+                <div key={k} style={{ background: '#F8FAFC', borderRadius: '6px', padding: '6px 9px', border: '1px solid #F1F5F9' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1px' }}>{k}</div>
+                  <div style={{ fontWeight: '600', color: '#1E293B', fontSize: '11px', wordBreak: 'break-word' }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Correct sample button */}
+            <button onClick={() => setShowEdit(true)}
+              style={{ width: '100%', padding: '8px', background: '#FFF7ED', color: '#D97706', border: '1px solid #FED7AA', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '12px' }}>
+              ✏️ Correct This Sample
+            </button>
+
+            {/* ── Analyst selector ── */}
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#4C1D95', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                Analyst Signature *
+              </label>
+
+              {!manualAnalyst ? (
+                <>
+                  <select
+                    value={analyst}
+                    onChange={e => setAnalyst(e.target.value)}
+                    style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '9px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: analyst ? '#1E293B' : '#94A3B8', outline: 'none', cursor: 'pointer', marginBottom: '6px', boxSizing: 'border-box', appearance: 'auto' }}>
+                    <option value="">— Select analyst —</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.full_name}>{s.full_name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
+                    style={{ background: 'none', border: 'none', color: PM, fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
+                    + Not in list? Type name manually
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={analyst}
+                    onChange={e => setAnalyst(e.target.value)}
+                    autoFocus
+                    placeholder="Type analyst full name..."
+                    style={{ width: '100%', border: `1.5px solid ${PM}`, borderRadius: '8px', padding: '9px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', boxSizing: 'border-box', marginBottom: '6px' }}
+                  />
+                  {analyst.trim().length > 1 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await api.post('/lookup/staff', { full_name: analyst.trim(), role: 'Both' });
+                          const saved = res.data?.staff;
+                          if (saved) {
+                            setStaff(prev => {
+                              const exists = prev.find(s => s.full_name === saved.full_name);
+                              if (exists) return prev;
+                              return [...prev, saved].sort((a, b) => a.full_name.localeCompare(b.full_name));
+                            });
+                          }
+                          setManualAnalyst(false);
+                          toast.success(`✅ ${analyst.trim()} saved to analyst list`);
+                        } catch(e) {
+                          toast.error('Failed to save: ' + (e.response?.data?.error || e.message));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '8px', background: `linear-gradient(135deg,${P},${PM})`, color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '5px' }}>
+                      💾 Save "{analyst.trim()}" to analyst list
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
+                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
+                    ← Back to dropdown without saving
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Submit All button — Step 2 only */}
+          {step === 'enter' && (
+            <div style={{ padding: '10px 14px', borderTop: '1px solid #E2E8F0', background: '#FAFBFC', flexShrink: 0 }}>
+              <button
+                onClick={submitAll}
+                disabled={savingAll || !canAll}
+                style={{ width: '100%', padding: '11px', background: canAll ? 'linear-gradient(135deg,#0D9488,#059669)' : '#CBD5E1', color: '#fff', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: '800', cursor: canAll ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s' }}>
+                {savingAll ? '⏳ Saving...' : '✅ Submit All Results'}
+              </button>
+              {!analyst.trim() && (
+                <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center', margin: '5px 0 0' }}>
+                  Select analyst above first
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ════════════════════════════════════════════════════
+            STEP 1 — Select tests to perform
+        ════════════════════════════════════════════════════ */}
         {step === 'confirm' && (
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Header */}
             <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>
                   Step 1 — Select Tests to Perform
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94A3B8' }}>
-                  Tick the tests you will perform on this sample then click Confirm
+                  Tick the tests you will perform then click Confirm
                 </p>
               </div>
               <span style={{ background: PL, color: P, padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700' }}>
-                {selectedIds.length}/{allTests.length} selected
+                {selectedIds.length} / {allTests.length} selected
               </span>
             </div>
 
-            {/* Test list */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
               {allTests.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
                   <div style={{ fontSize: '48px', marginBottom: '12px' }}>⚠️</div>
                   <div style={{ fontWeight: '700', fontSize: '15px', color: '#374151' }}>No tests configured</div>
                   <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '6px' }}>
-                    No tests found for sample type "{sample?.sample_types?.name}". Contact your admin.
+                    No tests found for "{sample?.sample_types?.name}". Contact your admin.
                   </div>
                 </div>
               ) : (
                 <>
-                  {/* Select all toggle */}
+                  {/* Select All toggle */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#F5F3FF', borderRadius: '9px', marginBottom: '10px', border: `1px solid ${PL}` }}>
                     <span style={{ fontSize: '12px', fontWeight: '700', color: '#4C1D95' }}>
                       {selectedIds.length} of {allTests.length} tests selected
                     </span>
-                    <button type="button"
+                    <button
+                      type="button"
                       onClick={() => setSelectedIds(
-                        selectedIds.length === allTests.length
-                          ? []
-                          : allTests.map(t => t.id)
+                        selectedIds.length === allTests.length ? [] : allTests.map(t => t.id)
                       )}
                       style={{ padding: '5px 14px', background: PM, color: '#fff', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>
                       {selectedIds.length === allTests.length ? 'Deselect All' : 'Select All'}
                     </button>
                   </div>
 
+                  {/* Test checkboxes */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {allTests.map(test => {
                       const spec    = test.test_specifications?.[0];
@@ -507,7 +524,9 @@ export default function AnalysisPage() {
                       return (
                         <label key={test.id}
                           style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: checked ? '#F5F3FF' : '#fff', border: `1.5px solid ${checked ? PM : '#E2E8F0'}`, borderRadius: '10px', cursor: 'pointer', transition: 'all 0.12s', userSelect: 'none' }}>
-                          <input type="checkbox" checked={checked}
+                          <input
+                            type="checkbox"
+                            checked={checked}
                             onChange={() => setSelectedIds(prev =>
                               prev.includes(test.id)
                                 ? prev.filter(x => x !== test.id)
@@ -521,17 +540,13 @@ export default function AnalysisPage() {
                             </div>
                             <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                               {spec?.display_spec && (
-                                <span style={{ color: '#D97706', fontWeight: '600' }}>
-                                  Spec: {spec.display_spec}
-                                </span>
+                                <span style={{ color: '#D97706', fontWeight: '600' }}>Spec: {spec.display_spec}</span>
                               )}
                               {test.unit && <span>Unit: {test.unit}</span>}
                               <span style={{ color: '#CBD5E1' }}>{test.result_type}</span>
                             </div>
                           </div>
-                          {checked && (
-                            <span style={{ color: GR, fontSize: '16px', flexShrink: 0 }}>✓</span>
-                          )}
+                          {checked && <span style={{ color: GR, fontSize: '16px', flexShrink: 0 }}>✓</span>}
                         </label>
                       );
                     })}
@@ -554,13 +569,12 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════
+        {/* ════════════════════════════════════════════════════
             STEP 2 — Enter results
-        ══════════════════════════════════════════════════ */}
+        ════════════════════════════════════════════════════ */}
         {step === 'enter' && (
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Header */}
             <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>
@@ -576,18 +590,16 @@ export default function AnalysisPage() {
                     ✅ All Complete
                   </span>
                 )}
-                <button onClick={() => {
-                  // Allow going back to test selection only if no results submitted
-                  const hasResults = Object.keys(subs).length > 0;
-                  if (hasResults) {
-                    toast.warning('Cannot change tests — results already submitted');
-                    return;
-                  }
-                  // Delete assignments and go back to step 1
-                  supabase.from('sample_test_assignments')
-                    .delete().eq('sample_id', sample.id)
-                    .then(() => { setStep('confirm'); loadSample(); });
-                }}
+                <button
+                  onClick={async () => {
+                    const hasResults = Object.keys(subs).length > 0;
+                    if (hasResults) { toast.warning('Cannot change tests — results already submitted'); return; }
+                    try {
+                      await supabase.from('sample_test_assignments').delete().eq('sample_id', id);
+                      await loadSample();
+                      setStep('confirm');
+                    } catch(e) { toast.error('Failed to reset: ' + e.message); }
+                  }}
                   style={{ padding: '5px 12px', background: '#F5F3FF', color: P, border: `1px solid ${PL}`, borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
                   ← Change Tests
                 </button>
@@ -599,7 +611,16 @@ export default function AnalysisPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr>
-                    {[['Test','170px'],['Spec','110px'],['Unit','65px'],['Value','auto'],['Status','85px'],['Analyst','110px'],['Time','72px'],['','80px']].map(([h, w]) => (
+                    {[
+                      ['Test',   '170px'],
+                      ['Spec',   '110px'],
+                      ['Unit',    '65px'],
+                      ['Value',    'auto'],
+                      ['Status',  '85px'],
+                      ['Analyst','110px'],
+                      ['Time',    '72px'],
+                      ['',        '80px'],
+                    ].map(([h, w]) => (
                       <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, width: w }}>
                         {h}
                       </th>
@@ -663,7 +684,9 @@ export default function AnalysisPage() {
                               <div style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: live.pass === false ? RD : live.pass === true ? GR : '#94A3B8' }} />
                             )}
                             {!locked && (
-                              <button onClick={() => submitOne(a)} disabled={!val.trim() || saving[a.id]}
+                              <button
+                                onClick={() => submitOne(a)}
+                                disabled={!val.trim() || saving[a.id]}
                                 style={{ padding: '5px 12px', background: !val.trim() ? '#E2E8F0' : sub?.value ? '#FFFBEB' : `linear-gradient(135deg,${P},${PM})`, color: !val.trim() ? '#94A3B8' : sub?.value ? '#D97706' : '#fff', border: sub?.value ? '1px solid #FED7AA' : 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700', cursor: !val.trim() ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                 {saving[a.id] ? '...' : sub?.value ? '✏️' : '✅'}
                               </button>
@@ -680,13 +703,16 @@ export default function AnalysisPage() {
                         <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#64748B', fontSize: '11px', whiteSpace: 'nowrap' }}>
                           {sub?.analyst || '—'}
                         </td>
+
                         <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#94A3B8', fontSize: '11px', whiteSpace: 'nowrap' }}>
                           {sub?.time ? format(new Date(sub.time), 'HH:mm') : '—'}
                         </td>
 
                         <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
                           {!sub?.value && !locked && (
-                            <button onClick={() => removeTest(a.id, a.tests?.name)} disabled={removing === a.id}
+                            <button
+                              onClick={() => removeTest(a.id, a.tests?.name)}
+                              disabled={removing === a.id}
                               style={{ padding: '3px 8px', background: '#FEF2F2', color: RD, border: '1px solid #FECACA', borderRadius: '5px', fontSize: '10px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>
                               {removing === a.id ? '...' : '🗑'}
                             </button>
@@ -704,10 +730,14 @@ export default function AnalysisPage() {
               </table>
             </div>
 
-            {/* Footer */}
+            {/* Table footer */}
             <div style={{ padding: '8px 20px', borderTop: '1px solid #E2E8F0', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ fontSize: '11px', color: '#94A3B8' }}>
-                Press <kbd style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', color: '#475569' }}>Enter</kbd> on any row to submit · green border = pass · red = OOS
+                Press{' '}
+                <kbd style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', color: '#475569' }}>
+                  Enter
+                </kbd>
+                {' '}on any row to submit · green border = pass · red = OOS
               </div>
               <div style={{ fontSize: '12px', color: '#94A3B8' }}>
                 {totalN - subN} remaining
@@ -717,6 +747,7 @@ export default function AnalysisPage() {
         )}
       </div>
 
+      {/* Sample edit modal */}
       {showEdit && sample && (
         <SampleEditModal
           sample={sample}
