@@ -84,12 +84,17 @@ const calcDeviation = (brand, label, actual) => {
   if (!e?.targetMin || actual === '' || actual === null || isNaN(actual))
     return { dev: null, status: null };
   const act = parseFloat(actual);
-  const mid = (e.targetMin + e.targetMax) / 2;
-  const dev = parseFloat((act - mid).toFixed(1));
-  const status =
-    act < e.targetMin ? 'low' :
-    act > e.targetMax ? 'high' : 'pass';
-  return { dev, status };
+
+  // Within range → deviation is 0
+  if (act >= e.targetMin && act <= e.targetMax)
+    return { dev: 0, status: 'pass' };
+
+  // Below lower limit → deviation = actual - lower limit (negative)
+  if (act < e.targetMin)
+    return { dev: parseFloat((act - e.targetMin).toFixed(1)), status: 'low' };
+
+  // Above upper limit → deviation = actual - upper limit (positive)
+  return { dev: parseFloat((act - e.targetMax).toFixed(1)), status: 'high' };
 };
 
 // Smart remark based on deviation
