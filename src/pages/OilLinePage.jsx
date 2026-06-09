@@ -159,16 +159,68 @@ function SmartCell({ paramKey, value, onChange, options, onNewOption, placeholde
 }
 
 // ── Sealing dropdown ──────────────────────────────────────
-function SealingCell({ value, onChange, options }) {
-  const opts = (options['sealing']||[]).length>0
+function SealingCell({ value, onChange, options, onNewOption }) {
+  const [custom, setCustom] = useState(false);
+  const [q,      setQ]      = useState(value || '');
+  const [rect,   setRect]   = useState(null);
+  const [open,   setOpen]   = useState(false);
+  const inputRef            = useRef(null);
+
+  useEffect(() => { setQ(value || ''); }, [value]);
+
+  const opts = (options['sealing'] || []).length > 0
     ? options['sealing']
     : ['Good','Acceptable','Leaking','Poor seal','Tight seal'];
+
+  const filtered = opts.filter(o => o.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+
+  const openDD = () => {
+    if (inputRef.current) {
+      const r = inputRef.current.getBoundingClientRect();
+      setRect({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 160) });
+    }
+    setOpen(true);
+  };
+
+  const select = (v) => { setQ(v); onChange(v); setOpen(false); setCustom(false); };
+
+  const handleBlur = () => setTimeout(() => {
+    setOpen(false);
+    if (q.trim() && q !== value) {
+      onChange(q.trim());
+      onNewOption('sealing', q.trim());
+    }
+  }, 160);
+
+  const dropdown = open && filtered.length > 0 && rect
+    ? createPortal(
+        <div style={{ position:'fixed', top:rect.top, left:rect.left, width:rect.width, background:'#fff', border:'1.5px solid #C4B5FD', borderRadius:'8px', boxShadow:'0 8px 24px rgba(107,33,168,0.15)', zIndex:9999, maxHeight:'160px', overflowY:'auto' }}>
+          {filtered.map(o => (
+            <div key={o} onMouseDown={() => select(o)}
+              style={{ padding:'7px 10px', fontSize:'12px', cursor:'pointer', borderBottom:'1px solid #F8FAFC', color:'#1E293B' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#F5F3FF'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              {o}
+            </div>
+          ))}
+        </div>, document.body
+      )
+    : null;
+
   return (
-    <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{ width:'100%', border:'1px solid #E2E8F0', borderRadius:'5px', padding:'5px 6px', fontSize:'12px', fontFamily:'inherit', background:'#fff', outline:'none', cursor:'pointer' }}>
-      <option value="">—</option>
-      {opts.map(o=><option key={o} value={o}>{o}</option>)}
-    </select>
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        value={q}
+        placeholder="Select or type..."
+        onChange={e => { setQ(e.target.value); openDD(); }}
+        onFocus={openDD}
+        onBlur={handleBlur}
+        style={{ width:'100%', border:'1px solid #E2E8F0', borderRadius:'5px', padding:'5px 7px', fontSize:'12px', fontFamily:'inherit', background:'#fff', outline:'none', boxSizing:'border-box' }}
+      />
+      {dropdown}
+    </>
   );
 }
 
@@ -641,7 +693,7 @@ export default function OilLinePage() {
                             ))}
                             {/* Sealing */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
-                              <SealingCell value={r.sealing} onChange={v=>setR(idx,'sealing',v)} options={options}/>
+                              <SealingCell value={r.sealing} onChange={v=>setR(idx,'sealing',v)} options={options} onNewOption={saveOption}/>
                             </td>
                             {/* Remarks */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
