@@ -478,7 +478,7 @@ export default function OilLinePage() {
       {/* Header */}
       <div style={{ background:`linear-gradient(135deg,${P},${PM})`, padding:'14px 24px', color:'#fff', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
         <div>
-          <h1 style={{ margin:0, fontSize:'18px', fontWeight:'900' }}>🛢️ Oil Line Inspection</h1>
+          <h1 style={{ margin:0, fontSize:'18px', fontWeight:'900' }}>🛢️ Oil Line Inspection Report. Ref: BUL/QA/LOG/03E</h1>
           <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#DDD6FE' }}>BIDCO Uganda Limited · Quality Assurance Department</p>
         </div>
         <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
