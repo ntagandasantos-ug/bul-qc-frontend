@@ -1,7 +1,7 @@
 // ============================================================
 // FILE: src/pages/FatsLinePage.jsx
-// Fats Line Inspection — Chipo, Chipsy, Cowboy, Kimbo
-// Same design pattern as OilLinePage
+// Fats Line Inspection — brand-specific LIMS dropdown values
+// Each brand row only shows that brand's analysis results
 // ============================================================
 
 import React, {
@@ -47,6 +47,14 @@ const CATALOGUE = {
 
 const BRANDS = Object.keys(CATALOGUE);
 
+// Keywords used to search LIMS per brand
+const BRAND_KEYWORDS = {
+  'Chipo' : ['chipo'],
+  'Chipsy': ['chipsy'],
+  'Cowboy': ['cowboy'],
+  'Kimbo' : ['kimbo'],
+};
+
 const getEntry  = (brand, label) =>
   (CATALOGUE[brand]||[]).find(e => e.label === label) || null;
 
@@ -69,23 +77,29 @@ const calcExpiry = (batch, dateStr) => {
 const targetStr = (brand, label) => {
   const e = getEntry(brand, label);
   if (!e) return '—';
-  return e.targetKg >= 1 ? `${e.targetKg} kg` : `${e.targetKg * 1000} g`;
+  return e.targetKg >= 1 ? `${e.targetKg} kg` : `${e.targetKg*1000} g`;
 };
 
-// Analysis parameters (1–6 from LIMS, 7 = Votation dropdown)
+// Analysis parameters (1–6 from LIMS)
 const ANA_PARAMS = [
-  { key:'ffa',           label:'%FFA',           unit:'%'      },
-  { key:'colour',        label:'Colour (5¼" Cell)',unit:'R'    },
-  { key:'slip_point',    label:'Slip Point',      unit:'°C'    },
-  { key:'peroxide_value',label:'Peroxide Value',  unit:'meq/kg'},
-  { key:'spatter',       label:'Spatter',         unit:''      },
-  { key:'vitamin_a',     label:'Vitamin A',       unit:'mg/kg' },
+  { key:'ffa',           label:'%FFA',             unit:'%'       },
+  { key:'colour',        label:'Colour (5¼" Cell)', unit:'R'       },
+  { key:'slip_point',    label:'Slip Point',        unit:'°C'      },
+  { key:'peroxide_value',label:'Peroxide Value',    unit:'meq/kg'  },
+  { key:'spatter',       label:'Spatter',           unit:''        },
+  { key:'vitamin_a',     label:'Vitamin A',         unit:'mg/kg'   },
 ];
 
-// Keywords used to find fats samples in LIMS
-const FATS_KEYWORDS = ['chipo','chipsy','kimbo','cowboy','fat','shortening'];
+// Test name → param key mapping
+const TEST_MAP = {
+  'FFA'            :'ffa',   '%FFA'            :'ffa',
+  'Color 5¼" Cell' :'colour','Colour 5¼" Cell' :'colour',
+  'Slip Point'     :'slip_point',
+  'Peroxide Value' :'peroxide_value',
+  'Spatter'        :'spatter',
+  'Vitamin A'      :'vitamin_a',
+};
 
-// Thin scrollbar CSS
 const scrollCSS = `
   .thin-scroll::-webkit-scrollbar { height:4px; width:4px; }
   .thin-scroll::-webkit-scrollbar-track { background:#F1F5F9; border-radius:4px; }
@@ -94,7 +108,8 @@ const scrollCSS = `
 `;
 
 // ── Portal SmartCell ──────────────────────────────────────
-function SmartCell({ paramKey, value, onChange, options, onNewOption, placeholder }) {
+// Accepts a pre-built options array (already filtered per brand)
+function SmartCell({ paramKey, value, onChange, optionsList, onNewOption, placeholder }) {
   const [open, setOpen] = useState(false);
   const [q,    setQ]    = useState(value||'');
   const [rect, setRect] = useState(null);
@@ -103,8 +118,8 @@ function SmartCell({ paramKey, value, onChange, options, onNewOption, placeholde
   useEffect(()=>{ setQ(value||''); },[value]);
 
   const filtered = useMemo(()=>
-    (options[paramKey]||[]).filter(o=>o.toLowerCase().includes(q.toLowerCase())).slice(0,10),
-    [options,paramKey,q]
+    (optionsList||[]).filter(o=>o.toLowerCase().includes(q.toLowerCase())).slice(0,10),
+    [optionsList,q]
   );
 
   const openDD = () => {
@@ -115,11 +130,11 @@ function SmartCell({ paramKey, value, onChange, options, onNewOption, placeholde
     setOpen(true);
   };
 
-  const select = (v) => { setQ(v); onChange(v); setOpen(false); };
+  const select = (v)=>{ setQ(v); onChange(v); setOpen(false); };
 
-  const handleBlur = () => setTimeout(()=>{
+  const handleBlur = ()=>setTimeout(()=>{
     setOpen(false);
-    if(q.trim()&&q!==value){ onChange(q.trim()); onNewOption(paramKey,q.trim()); }
+    if(q.trim()&&q!==value){ onChange(q.trim()); onNewOption(q.trim()); }
   },160);
 
   const dropdown = open&&filtered.length>0&&rect ? createPortal(
@@ -148,8 +163,8 @@ function SmartCell({ paramKey, value, onChange, options, onNewOption, placeholde
   );
 }
 
-// ── Votation — flexible dropdown (select + type new) ──────
-function VotationCell({ value, onChange, options, onNewOption }) {
+// ── Votation flexible dropdown ────────────────────────────
+function VotationCell({ value, onChange, optionsList, onNewOption }) {
   const [open, setOpen] = useState(false);
   const [q,    setQ]    = useState(value||'');
   const [rect, setRect] = useState(null);
@@ -157,25 +172,23 @@ function VotationCell({ value, onChange, options, onNewOption }) {
 
   useEffect(()=>{ setQ(value||''); },[value]);
 
-  const opts = (options['votation']||[]).length > 0
-    ? options['votation']
-    : ['Pass','Fail','Acceptable','Not Acceptable','Borderline'];
+  const defaults = ['Pass','Fail','Acceptable','Not Acceptable','Borderline'];
+  const merged   = [...new Set([...(optionsList||[]), ...defaults])];
+  const filtered = merged.filter(o=>o.toLowerCase().includes(q.toLowerCase())).slice(0,8);
 
-  const filtered = opts.filter(o=>o.toLowerCase().includes(q.toLowerCase())).slice(0,8);
-
-  const openDD = () => {
-    if (inputRef.current){
+  const openDD = ()=>{
+    if(inputRef.current){
       const r = inputRef.current.getBoundingClientRect();
       setRect({ top:r.bottom+2, left:r.left, width:Math.max(r.width,160) });
     }
     setOpen(true);
   };
 
-  const select = (v) => { setQ(v); onChange(v); setOpen(false); };
+  const select = (v)=>{ setQ(v); onChange(v); setOpen(false); };
 
-  const handleBlur = () => setTimeout(()=>{
+  const handleBlur = ()=>setTimeout(()=>{
     setOpen(false);
-    if(q.trim()&&q!==value){ onChange(q.trim()); onNewOption('votation',q.trim()); }
+    if(q.trim()&&q!==value){ onChange(q.trim()); onNewOption(q.trim()); }
   },160);
 
   const dropdown = open&&filtered.length>0&&rect ? createPortal(
@@ -208,20 +221,57 @@ function VotationCell({ value, onChange, options, onNewOption }) {
 export default function FatsLinePage() {
   const { user } = useAuth();
 
-  const [shift,       setShift]       = useState('day');
-  const [date,        setDate]        = useState(format(new Date(),'yyyy-MM-dd'));
-  const [inspection,  setInspection]  = useState(null);
-  const [entries,     setEntries]     = useState([]);
-  const [signoff,     setSignoff]     = useState(null);
-  const [options,     setOptions]     = useState({});
-  const [staffList,   setStaffList]   = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showForm,    setShowForm]    = useState(false);
-  const [saving,      setSaving]      = useState(false);
-  const [editEntryId, setEditEntryId] = useState(null);
-  const [fatsResults, setFatsResults] = useState({});
+  const [shift,          setShift]          = useState('day');
+  const [date,           setDate]           = useState(format(new Date(),'yyyy-MM-dd'));
+  const [inspection,     setInspection]     = useState(null);
+  const [entries,        setEntries]        = useState([]);
+  const [signoff,        setSignoff]        = useState(null);
+  // General options (votation, remarks, action + brand-specific manually typed)
+  // Key format for brand-specific: "BrandName::paramKey"
+  const [options,        setOptions]        = useState({});
+  // LIMS values per brand: { 'Chipo': { ffa:[], colour:[], ... }, ... }
+  const [brandLims,      setBrandLims]      = useState({});
+  const [staffList,      setStaffList]      = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [showForm,       setShowForm]       = useState(false);
+  const [saving,         setSaving]         = useState(false);
+  const [editEntryId,    setEditEntryId]    = useState(null);
+  const [limsLoaded,     setLimsLoaded]     = useState(false);
 
-  // ── Load options, staff, LIMS fats analysis results ───────
+  // ── Helper: build option list for a specific brand + param ─
+  // Merges: LIMS values for brand + manually saved brand-specific values
+  const getBrandOptions = (brand, paramKey) => {
+    if (!brand) return [];
+    const limsVals    = brandLims[brand]?.[paramKey] || [];
+    const manualKey   = `${brand}::${paramKey}`;
+    const manualVals  = options[manualKey] || [];
+    // Unique, LIMS first
+    return [...new Set([...limsVals, ...manualVals])];
+  };
+
+  // ── Save a brand-specific option ──────────────────────────
+  const saveBrandOption = async (brand, paramKey, value) => {
+    if (!brand || !value?.trim()) return;
+    const key = `${brand}::${paramKey}`;
+    await supabase.from('fats_param_options')
+      .upsert({ parameter:key, value:value.trim() }, { onConflict:'parameter,value' });
+    setOptions(prev => {
+      const e = prev[key]||[];
+      return e.includes(value.trim()) ? prev : { ...prev, [key]:[value.trim(),...e] };
+    });
+  };
+
+  const saveOption = async (paramKey, value) => {
+    if (!value?.trim()) return;
+    await supabase.from('fats_param_options')
+      .upsert({ parameter:paramKey, value:value.trim() }, { onConflict:'parameter,value' });
+    setOptions(prev => {
+      const e = prev[paramKey]||[];
+      return e.includes(value.trim()) ? prev : { ...prev, [paramKey]:[value.trim(),...e] };
+    });
+  };
+
+  // ── Load general options & staff ──────────────────────────
   useEffect(()=>{
     supabase.from('fats_param_options').select('parameter,value').order('use_count',{ascending:false})
       .then(({data})=>{
@@ -231,65 +281,41 @@ export default function FatsLinePage() {
       });
     supabase.from('lab_staff').select('full_name').eq('is_active',true).order('full_name')
       .then(({data})=>setStaffList((data||[]).map(s=>s.full_name)));
-    loadFatsAnalysis();
+    loadBrandLimsValues();
   },[]);
 
-  // Pull analysis values from LIMS for Chipo/Chipsy/Kimbo/Cowboy samples
-  const loadFatsAnalysis = async () => {
-    try {
-      const { data: samples } = await supabase
-        .from('registered_samples')
-        .select(`
-          id, sample_name,
-          sample_test_assignments (
-            result_value,
-            tests ( name )
-          )
-        `)
-        .or(FATS_KEYWORDS.map(k=>`sample_name.ilike.%${k}%`).join(','))
-        .eq('status','complete')
-        .order('registered_at',{ascending:false})
-        .limit(30);
+  // ── Load LIMS values separately per brand ─────────────────
+  const loadBrandLimsValues = async () => {
+    const result = {};
+    for (const [brand, keywords] of Object.entries(BRAND_KEYWORDS)) {
+      try {
+        const { data: samples } = await supabase
+          .from('registered_samples')
+          .select(`id, sample_name, sample_test_assignments(result_value, tests(name))`)
+          .or(keywords.map(k=>`sample_name.ilike.%${k}%`).join(','))
+          .eq('status','complete')
+          .order('registered_at',{ascending:false})
+          .limit(20);
 
-      if (!samples?.length) return;
+        if (!samples?.length) continue;
 
-      const testMap = {
-        'FFA'           : 'ffa',
-        '%FFA'          : 'ffa',
-        'Color 5¼" Cell': 'colour',
-        'Colour 5¼" Cell':'colour',
-        'Slip Point'    : 'slip_point',
-        'Peroxide Value': 'peroxide_value',
-        'Spatter'       : 'spatter',
-        'Vitamin A'     : 'vitamin_a',
-      };
+        const vals = {};
+        ANA_PARAMS.forEach(p=>{ vals[p.key]=new Set(); });
 
-      const vals = {};
-      ANA_PARAMS.forEach(p=>{ vals[p.key]=new Set(); });
-
-      samples.forEach(s=>{
-        (s.sample_test_assignments||[]).forEach(a=>{
-          if (!a.result_value) return;
-          const pKey = testMap[a.tests?.name];
-          if (pKey) vals[pKey].add(a.result_value);
+        samples.forEach(s=>{
+          (s.sample_test_assignments||[]).forEach(a=>{
+            if (!a.result_value) return;
+            const pKey = TEST_MAP[a.tests?.name];
+            if (pKey) vals[pKey].add(a.result_value);
+          });
         });
-      });
 
-      // Merge into options
-      setOptions(prev=>{
-        const merged = {...prev};
-        ANA_PARAMS.forEach(p=>{
-          const v = [...vals[p.key]];
-          if (!v.length) return;
-          merged[p.key] = [...v, ...(merged[p.key]||[]).filter(x=>!v.includes(x))];
-        });
-        return merged;
-      });
-
-      const display={};
-      ANA_PARAMS.forEach(p=>{ display[p.key]=[...vals[p.key]]; });
-      setFatsResults(display);
-    } catch(e){ console.error('Fats analysis load:', e.message); }
+        result[brand] = {};
+        ANA_PARAMS.forEach(p=>{ result[brand][p.key]=[...vals[p.key]]; });
+      } catch(e){ console.error(`LIMS load error for ${brand}:`, e.message); }
+    }
+    setBrandLims(result);
+    setLimsLoaded(Object.keys(result).length > 0);
   };
 
   // ── Load session ──────────────────────────────────────────
@@ -315,12 +341,6 @@ export default function FatsLinePage() {
 
   useEffect(()=>{ loadSession(); },[loadSession]);
 
-  const saveOption = async(param,value)=>{
-    if (!value?.trim()) return;
-    await supabase.from('fats_param_options').upsert({parameter:param,value:value.trim()},{onConflict:'parameter,value'});
-    setOptions(prev=>{ const e=prev[param]||[]; return e.includes(value.trim())?prev:{...prev,[param]:[value.trim(),...e]}; });
-  };
-
   const ensureSession = async()=>{
     if (inspection) return inspection;
     const { data,error } = await supabase.from('fats_line_inspections')
@@ -344,27 +364,28 @@ export default function FatsLinePage() {
     records        : [emptyRecord()],
   });
 
-  const setF = (k,v) => setForm(p=>({...p,[k]:v}));
+  const setF = (k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const setR = (i,k,v) => setForm(p=>{
+  const setR = (i,k,v)=>setForm(p=>{
     const records=[...p.records];
     const updated={...records[i],[k]:v};
-
-    if (k==='brand_name'){
+    if(k==='brand_name'){
+      // Clear pack size and analysis values when brand changes
       updated.pack_size=''; updated.pack_type='';
       updated.batch_number=''; updated.expiry_date='';
+      ANA_PARAMS.forEach(ap=>{ updated[ap.key]=''; });
+      updated.votation='';
     }
-    if (k==='pack_size'){
-      const e     = getEntry(records[i].brand_name, v);
+    if(k==='pack_size'){
+      const e = getEntry(records[i].brand_name, v);
       const batch = genBatch(records[i].brand_name, v, date, shift);
-      updated.pack_type    = e?.type||'';
-      updated.batch_number = batch;
-      updated.expiry_date  = calcExpiry(batch, date);
+      updated.pack_type   = e?.type||'';
+      updated.batch_number= batch;
+      updated.expiry_date = calcExpiry(batch, date);
     }
-    if (k==='batch_number'){
+    if(k==='batch_number'){
       updated.expiry_date = calcExpiry(v, date);
     }
-
     records[i]=updated;
     return {...p,records};
   });
@@ -372,21 +393,21 @@ export default function FatsLinePage() {
   // Open edit
   const openEdit = (entry)=>{
     const records=(entry.fats_inspection_records||[]).map(r=>({
-      brand_name     : r.brand_name,
-      pack_size      : r.pack_size,
-      pack_type      : r.pack_type      ||'',
-      batch_number   : r.batch_number   ||'',
-      net_weight     : r.net_weight     ??'',
-      expiry_date    : r.expiry_date    ||'',
-      ffa            : r.ffa            ||'',
-      colour         : r.colour         ||'',
-      slip_point     : r.slip_point     ||'',
-      peroxide_value : r.peroxide_value ||'',
-      spatter        : r.spatter        ||'',
-      vitamin_a      : r.vitamin_a      ||'',
-      votation       : r.votation       ||'',
-      remarks        : r.remarks        ||'',
-      action_taken   : r.action_taken   ||'',
+      brand_name    : r.brand_name,
+      pack_size     : r.pack_size,
+      pack_type     : r.pack_type      ||'',
+      batch_number  : r.batch_number   ||'',
+      net_weight    : r.net_weight     ??'',
+      expiry_date   : r.expiry_date    ||'',
+      ffa           : r.ffa            ||'',
+      colour        : r.colour         ||'',
+      slip_point    : r.slip_point     ||'',
+      peroxide_value: r.peroxide_value ||'',
+      spatter       : r.spatter        ||'',
+      vitamin_a     : r.vitamin_a      ||'',
+      votation      : r.votation       ||'',
+      remarks       : r.remarks        ||'',
+      action_taken  : r.action_taken   ||'',
     }));
     setForm({ inspection_time:entry.inspection_time, inspector_name:entry.inspector_name||'', records:records.length>0?records:[emptyRecord()] });
     setEditEntryId(entry.id);
@@ -425,28 +446,31 @@ export default function FatsLinePage() {
 
       for (const r of form.records){
         await supabase.from('fats_inspection_records').insert({
-          entry_id       : entryId,
-          brand_name     : r.brand_name,
-          pack_size      : r.pack_size,
-          pack_type      : r.pack_type      ||null,
-          batch_number   : r.batch_number   ||null,
-          target_weight  : targetStr(r.brand_name,r.pack_size),
-          net_weight     : r.net_weight!==''?parseFloat(r.net_weight):null,
-          expiry_date    : r.expiry_date    ||null,
-          ffa            : r.ffa            ||null,
-          colour         : r.colour         ||null,
-          slip_point     : r.slip_point     ||null,
-          peroxide_value : r.peroxide_value ||null,
-          spatter        : r.spatter        ||null,
-          vitamin_a      : r.vitamin_a      ||null,
-          votation       : r.votation       ||null,
-          remarks        : r.remarks        ||null,
-          action_taken   : r.action_taken   ||null,
+          entry_id      : entryId,
+          brand_name    : r.brand_name,
+          pack_size     : r.pack_size,
+          pack_type     : r.pack_type     ||null,
+          batch_number  : r.batch_number  ||null,
+          target_weight : targetStr(r.brand_name,r.pack_size),
+          net_weight    : r.net_weight!==''?parseFloat(r.net_weight):null,
+          expiry_date   : r.expiry_date   ||null,
+          ffa           : r.ffa           ||null,
+          colour        : r.colour        ||null,
+          slip_point    : r.slip_point    ||null,
+          peroxide_value: r.peroxide_value||null,
+          spatter       : r.spatter       ||null,
+          vitamin_a     : r.vitamin_a     ||null,
+          votation      : r.votation      ||null,
+          remarks       : r.remarks       ||null,
+          action_taken  : r.action_taken  ||null,
         });
-        ANA_PARAMS.forEach(p=>{ if(r[p.key]?.trim()) saveOption(p.key,r[p.key]); });
-        if (r.votation)     saveOption('votation',r.votation);
-        if (r.remarks)      saveOption('remarks',r.remarks);
-        if (r.action_taken) saveOption('action',r.action_taken);
+        // Save as brand-specific options to avoid cross-brand mixing
+        ANA_PARAMS.forEach(p=>{
+          if(r[p.key]?.trim()) saveBrandOption(r.brand_name, p.key, r[p.key]);
+        });
+        if(r.votation)     saveOption('votation', r.votation);
+        if(r.remarks)      saveOption('remarks',  r.remarks);
+        if(r.action_taken) saveOption('action',   r.action_taken);
       }
 
       toast.success(editEntryId?'✅ Entry updated':'✅ Entry saved');
@@ -465,8 +489,6 @@ export default function FatsLinePage() {
     } catch(e){ toast.error(e.message); }
   };
 
-  const hasLimsData = ANA_PARAMS.some(p=>(fatsResults[p.key]||[]).length>0);
-
   const inp = { border:'1.5px solid #E2E8F0', borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', outline:'none', boxSizing:'border-box', width:'100%' };
   const sel = { ...inp, cursor:'pointer', appearance:'auto' };
   const lbl = { display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.4px' };
@@ -477,6 +499,10 @@ export default function FatsLinePage() {
     </th>
   );
 
+  // Brand LIMS indicator
+  const brandHasLims = (brand) =>
+    brand && ANA_PARAMS.some(p=>(brandLims[brand]?.[p.key]||[]).length>0);
+
   return (
     <div style={{ minHeight:'100vh', background:'#F8FAFC', paddingBottom:'60px' }}>
       <style>{scrollCSS}</style>
@@ -485,7 +511,7 @@ export default function FatsLinePage() {
       {/* Page header */}
       <div style={{ background:`linear-gradient(135deg,${P},${PM})`, padding:'14px 24px', color:'#fff', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
         <div>
-          <h1 style={{ margin:0, fontSize:'18px', fontWeight:'900' }}>📦 Fats Line Inspection</h1>
+          <h1 style={{ margin:0, fontSize:'18px', fontWeight:'900' }}>📦 Fats Line Inspection Report. Ref: BUL/QA/LOG/03D</h1>
           <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#DDD6FE' }}>BIDCO Uganda Limited · Quality Assurance Department</p>
         </div>
         <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
@@ -508,9 +534,9 @@ export default function FatsLinePage() {
           </button>
         ))}
         <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'8px', padding:'0 4px' }}>
-          {hasLimsData && (
+          {limsLoaded && (
             <span style={{ background:'#F0FDF4', color:GR, padding:'3px 10px', borderRadius:'20px', fontSize:'11px', fontWeight:'700', border:'1px solid #A7F3D0' }}>
-              🔬 LIMS values loaded
+              🔬 Brand LIMS values loaded
             </span>
           )}
           {entries.length>0 && (
@@ -543,13 +569,13 @@ export default function FatsLinePage() {
             </div>
 
             {/* LIMS notice */}
-            {hasLimsData && (
+            {limsLoaded && (
               <div style={{ background:'#F0FDF4', border:'1px solid #A7F3D0', borderRadius:'10px', padding:'10px 16px', marginBottom:'14px', display:'flex', alignItems:'center', gap:'10px' }}>
                 <span style={{ fontSize:'16px' }}>🔬</span>
                 <div>
-                  <div style={{ fontWeight:'700', fontSize:'12px', color:GR }}>Fats Analysis Values Loaded from LIMS</div>
+                  <div style={{ fontWeight:'700', fontSize:'12px', color:GR }}>Brand-Specific LIMS Values Loaded</div>
                   <div style={{ fontSize:'11px', color:'#64748B', marginTop:'1px' }}>
-                    Latest Chipo, Chipsy, Kimbo and Cowboy analysis results are available as dropdown suggestions.
+                    Each brand's analysis dropdown only shows that brand's own results — Chipo values for Chipo, Cowboy values for Cowboy, and so on.
                   </div>
                 </div>
               </div>
@@ -558,7 +584,6 @@ export default function FatsLinePage() {
             {/* ═══ FORM ═══ */}
             {showForm && (
               <div style={{ background:'#fff', borderRadius:'14px', border:`2px solid ${editEntryId?'#FED7AA':PL}`, marginBottom:'18px', overflow:'hidden', boxShadow:'0 4px 16px rgba(107,33,168,0.07)' }}>
-                {/* Form header */}
                 <div style={{ padding:'12px 18px', borderBottom:'1px solid #F1F5F9', background:editEntryId?'#FFFBEB':'#F5F3FF', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
                   <div style={{ display:'flex', gap:'14px', alignItems:'center', flexWrap:'wrap' }}>
                     <span style={{ fontWeight:'800', fontSize:'14px', color:editEntryId?AM:P }}>
@@ -584,7 +609,6 @@ export default function FatsLinePage() {
                   </button>
                 </div>
 
-                {/* Table */}
                 <div className="thin-scroll" style={{ overflowX:'auto' }}>
                   <table style={{ borderCollapse:'collapse', width:'100%', fontSize:'12px' }}>
                     <thead>
@@ -597,7 +621,7 @@ export default function FatsLinePage() {
                         <TH w="92px" center>Net Weight</TH>
                         <TH w="100px" center>Expiry Date</TH>
                         {ANA_PARAMS.map(p=>(
-                          <TH key={p.key} w="88px" center>
+                          <TH key={p.key} w="90px" center>
                             {p.label}
                             {p.unit && <><br/><span style={{fontSize:'9px',opacity:0.8}}>({p.unit})</span></>}
                           </TH>
@@ -612,6 +636,8 @@ export default function FatsLinePage() {
                       {form.records.map((r,idx)=>{
                         const entry  = getEntry(r.brand_name, r.pack_size);
                         const rowBg  = idx%2===0?'#fff':'#FAFBFC';
+                        const hasLims = brandHasLims(r.brand_name);
+
                         return (
                           <tr key={idx} style={{ background:rowBg }}>
                             {/* Brand */}
@@ -621,6 +647,12 @@ export default function FatsLinePage() {
                                 <option value="">— Select —</option>
                                 {BRANDS.map(b=><option key={b} value={b}>{b}</option>)}
                               </select>
+                              {/* Show LIMS indicator per brand row */}
+                              {hasLims && (
+                                <div style={{ fontSize:'9px', color:GR, fontWeight:'700', marginTop:'2px', textAlign:'center' }}>
+                                  🔬 values loaded
+                                </div>
+                              )}
                             </td>
                             {/* Pack size */}
                             <td style={{ padding:'5px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
@@ -639,40 +671,64 @@ export default function FatsLinePage() {
                               <input type="text" value={r.batch_number} onChange={e=>setR(idx,'batch_number',e.target.value)}
                                 style={{ width:'100%', border:'1px solid #E2E8F0', borderRadius:'5px', padding:'5px 6px', fontSize:'11px', fontFamily:'monospace', background:'#F5F3FF', outline:'none', boxSizing:'border-box', color:P, fontWeight:'700', textAlign:'center' }}/>
                             </td>
-                            {/* Target weight (read-only) */}
+                            {/* Target weight */}
                             <td style={{ padding:'6px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center' }}>
                               <span style={{ fontSize:'12px', color:AM, fontWeight:'700', background:'#FFFBEB', padding:'2px 8px', borderRadius:'5px', border:'1px solid #FED7AA', whiteSpace:'nowrap' }}>
                                 {entry ? (entry.targetKg>=1?`${entry.targetKg} kg`:`${entry.targetKg*1000} g`) : '—'}
                               </span>
                             </td>
-                            {/* Net weight (manual) */}
+                            {/* Net weight */}
                             <td style={{ padding:'4px 6px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center' }}>
                               <input type="number" step="0.001" value={r.net_weight} onChange={e=>setR(idx,'net_weight',e.target.value)}
                                 placeholder="kg/g"
                                 style={{ width:'76px', border:'1px solid #E2E8F0', borderRadius:'5px', padding:'5px 6px', fontSize:'12px', fontFamily:'inherit', background:'#fff', outline:'none', textAlign:'center' }}/>
                             </td>
-                            {/* Expiry date (auto, editable) */}
+                            {/* Expiry date */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
                               <input type="date" value={r.expiry_date} onChange={e=>setR(idx,'expiry_date',e.target.value)}
                                 style={{ border:'1px solid #E2E8F0', borderRadius:'5px', padding:'4px 5px', fontSize:'11px', fontFamily:'inherit', background:'#fff', outline:'none', cursor:'pointer', width:'100%', boxSizing:'border-box' }}/>
                             </td>
-                            {/* Analysis params (1–6) */}
+                            {/* Analysis params — brand-specific options only */}
                             {ANA_PARAMS.map(p=>(
                               <td key={p.key} style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
-                                <SmartCell paramKey={p.key} value={r[p.key]} onChange={v=>setR(idx,p.key,v)} options={options} onNewOption={saveOption}/>
+                                <SmartCell
+                                  paramKey={p.key}
+                                  value={r[p.key]}
+                                  onChange={v=>setR(idx,p.key,v)}
+                                  optionsList={getBrandOptions(r.brand_name, p.key)}
+                                  onNewOption={v=>saveBrandOption(r.brand_name, p.key, v)}
+                                  placeholder={r.brand_name?'—':'Select brand first'}
+                                />
                               </td>
                             ))}
-                            {/* Votation (flexible dropdown) */}
+                            {/* Votation */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
-                              <VotationCell value={r.votation} onChange={v=>setR(idx,'votation',v)} options={options} onNewOption={saveOption}/>
+                              <VotationCell
+                                value={r.votation}
+                                onChange={v=>setR(idx,'votation',v)}
+                                optionsList={options['votation']||[]}
+                                onNewOption={v=>saveOption('votation',v)}
+                              />
                             </td>
                             {/* Remarks */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
-                              <SmartCell paramKey="remarks" value={r.remarks} onChange={v=>setR(idx,'remarks',v)} options={options} onNewOption={saveOption}/>
+                              <SmartCell
+                                paramKey="remarks"
+                                value={r.remarks}
+                                onChange={v=>setR(idx,'remarks',v)}
+                                optionsList={options['remarks']||[]}
+                                onNewOption={v=>saveOption('remarks',v)}
+                              />
                             </td>
                             {/* Action */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9' }}>
-                              <SmartCell paramKey="action" value={r.action_taken} onChange={v=>setR(idx,'action_taken',v)} options={options} onNewOption={saveOption}/>
+                              <SmartCell
+                                paramKey="action"
+                                value={r.action_taken}
+                                onChange={v=>setR(idx,'action_taken',v)}
+                                optionsList={options['action']||[]}
+                                onNewOption={v=>saveOption('action',v)}
+                              />
                             </td>
                             {/* Remove */}
                             <td style={{ padding:'4px', borderBottom:'1px solid #F1F5F9', textAlign:'center' }}>
@@ -688,13 +744,14 @@ export default function FatsLinePage() {
                   </table>
                 </div>
 
-                {/* Footer */}
                 <div style={{ padding:'10px 14px', display:'flex', gap:'10px', alignItems:'center', background:'#F9FAFB', borderTop:'1px solid #F1F5F9', flexWrap:'wrap' }}>
                   <button onClick={()=>setForm(p=>({...p,records:[...p.records,emptyRecord()]}))}
                     style={{ padding:'7px 16px', border:'2px dashed #C4B5FD', borderRadius:'8px', background:'#FAFBFF', color:PM, fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
                     + Add Product Row
                   </button>
-                  <span style={{ fontSize:'11px', color:'#94A3B8' }}>Batch number and expiry auto-fill · LIMS analysis values available as suggestions</span>
+                  <span style={{ fontSize:'11px', color:'#94A3B8' }}>
+                    Analysis dropdowns show only the selected brand's LIMS values
+                  </span>
                   <button onClick={handleSave} disabled={saving}
                     style={{ marginLeft:'auto', padding:'9px 24px', background:saving?'#A78BFA':editEntryId?`linear-gradient(135deg,${AM},#B45309)`:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'700', cursor:saving?'not-allowed':'pointer', fontFamily:'inherit' }}>
                     {saving?'⏳ Saving...':editEntryId?'✅ Update Entry':'✅ Save Entry'}
@@ -715,10 +772,8 @@ export default function FatsLinePage() {
                 {entries.map(entry=>{
                   const records   = entry.fats_inspection_records||[];
                   const isEditing = editEntryId===entry.id;
-
                   return (
                     <div key={entry.id} style={{ background:'#fff', borderRadius:'12px', border:`2px solid ${isEditing?'#FED7AA':PL}`, overflow:'hidden', boxShadow:isEditing?'0 4px 12px rgba(217,119,6,0.15)':'0 1px 4px rgba(107,33,168,0.05)' }}>
-                      {/* Entry header */}
                       <div style={{ background:isEditing?'#FFFBEB':'#F5F3FF', padding:'10px 16px', display:'flex', alignItems:'center', gap:'12px', borderBottom:`1px solid ${isEditing?'#FED7AA':PL}`, flexWrap:'wrap' }}>
                         <span style={{ fontWeight:'900', fontSize:'16px', color:P, fontFamily:'monospace' }}>🕐 {entry.inspection_time}</span>
                         <span style={{ fontSize:'12px', color:'#64748B', fontWeight:'600' }}>✍️ {entry.inspector_name||'—'}</span>
@@ -732,7 +787,6 @@ export default function FatsLinePage() {
                         )}
                       </div>
 
-                      {/* Results table */}
                       <div className="thin-scroll" style={{ overflowX:'auto' }}>
                         <table style={{ borderCollapse:'collapse', width:'100%', fontSize:'12px' }}>
                           <thead>
@@ -762,11 +816,9 @@ export default function FatsLinePage() {
                                   <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', color:'#64748B', fontSize:'11px' }}>{r.pack_type||'—'}</td>
                                   <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', fontFamily:'monospace', fontWeight:'700', color:P, fontSize:'11px' }}>{r.batch_number||'—'}</td>
                                   <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', color:AM, fontWeight:'700', fontSize:'11px' }}>{r.target_weight||'—'}</td>
-                                  <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', fontWeight:'800', fontFamily:'monospace', fontSize:'13px', color:r.net_weight!=null?'#1E293B':'#CBD5E1' }}>
-                                    {r.net_weight??'—'}
-                                  </td>
+                                  <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', fontWeight:'800', fontFamily:'monospace', fontSize:'13px', color:r.net_weight!=null?'#1E293B':'#CBD5E1' }}>{r.net_weight??'—'}</td>
                                   <td style={{ padding:'9px 8px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', fontSize:'11px', color:'#64748B' }}>
-                                    {r.expiry_date ? format(new Date(r.expiry_date),'dd/MM/yyyy') : '—'}
+                                    {r.expiry_date?format(new Date(r.expiry_date),'dd/MM/yyyy'):'—'}
                                   </td>
                                   {ANA_PARAMS.map(p=>(
                                     <td key={p.key} style={{ padding:'9px 7px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center', color:r[p.key]?'#1E293B':'#CBD5E1', fontSize:'11px' }}>
@@ -774,11 +826,11 @@ export default function FatsLinePage() {
                                     </td>
                                   ))}
                                   <td style={{ padding:'9px 7px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', textAlign:'center' }}>
-                                    {r.votation ? (
-                                      <span style={{ background: r.votation==='Pass'?'#DCFCE7':r.votation==='Fail'?'#FEF2F2':'#F5F3FF', color: r.votation==='Pass'?GR:r.votation==='Fail'?RD:P, padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'700' }}>
+                                    {r.votation?(
+                                      <span style={{ background:r.votation==='Pass'?'#DCFCE7':r.votation==='Fail'?'#FEF2F2':'#F5F3FF', color:r.votation==='Pass'?GR:r.votation==='Fail'?RD:P, padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'700' }}>
                                         {r.votation}
                                       </span>
-                                    ) : <span style={{ color:'#CBD5E1' }}>—</span>}
+                                    ):<span style={{ color:'#CBD5E1' }}>—</span>}
                                   </td>
                                   <td style={{ padding:'9px 7px', borderBottom:'1px solid #F1F5F9', borderRight:'1px solid #F1F5F9', color:r.remarks?'#1E293B':'#CBD5E1', fontSize:'11px' }}>{r.remarks||'—'}</td>
                                   <td style={{ padding:'9px 7px', borderBottom:'1px solid #F1F5F9', color:r.action_taken?'#1E293B':'#CBD5E1', fontSize:'11px' }}>{r.action_taken||'—'}</td>
@@ -794,8 +846,8 @@ export default function FatsLinePage() {
               </div>
             )}
 
-            {/* ═══ SHIFT SIGN-OFF ═══ */}
-            {(entries.length>0||inspection) && (
+            {/* SHIFT SIGN-OFF */}
+            {(entries.length>0||inspection)&&(
               <div style={{ marginTop:'24px', background:'#fff', borderRadius:'14px', border:`2px solid ${PL}`, padding:'22px' }}>
                 <h3 style={{ margin:'0 0 4px', fontSize:'15px', fontWeight:'800', color:'#0F172A' }}>
                   📝 {shift==='day'?'Day':'Night'} Shift Sign-Off
@@ -828,7 +880,7 @@ export default function FatsLinePage() {
                   style={{ width:'100%', padding:'11px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'13px', fontWeight:'800', cursor:'pointer', fontFamily:'inherit' }}>
                   ✅ Sign Off {shift==='day'?'Day':'Night'} Shift Report
                 </button>
-                {signoff?.signed_at && (
+                {signoff?.signed_at&&(
                   <p style={{ textAlign:'center', fontSize:'12px', color:GR, marginTop:'8px', fontWeight:'600' }}>
                     ✅ Signed on {format(new Date(signoff.signed_at),'dd MMMM yyyy · HH:mm')}
                   </p>
