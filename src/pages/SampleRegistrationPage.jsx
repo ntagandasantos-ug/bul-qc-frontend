@@ -5,6 +5,9 @@
 //   1. Single sample registration (existing behaviour)
 //   2. Bulk registration — add multiple samples at once
 //      then submit them all in one click
+//
+// Changes: Batch/Lot Number replaced with
+//          Vehicle Number + Container Number + Batch Number
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -32,6 +35,8 @@ const emptySample = () => ({
   typeId       : '',
   brandId      : '',
   subtypeId    : '',
+  vehicleNo    : '',   // NEW
+  containerNo  : '',   // NEW
   batchNo      : '',
   notes        : '',
   samplerName  : '',
@@ -49,25 +54,25 @@ export default function SampleRegistrationPage() {
   const { user, signingAs } = useAuth();
   const navigate = useNavigate();
 
-  const [mode,       setMode]       = useState('single'); // 'single' | 'bulk'
-  const [deptId,     setDeptId]     = useState('');
-  const [depts,      setDepts]      = useState([]);
-  const [brands,     setBrands]     = useState([]);
-  const [samplers,   setSamplers]   = useState([]);
-  const [namePresets,setNamePresets]= useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [successList,setSuccessList]= useState([]);
+  const [mode,        setMode]        = useState('single'); // 'single' | 'bulk'
+  const [deptId,      setDeptId]      = useState('');
+  const [depts,       setDepts]       = useState([]);
+  const [brands,      setBrands]      = useState([]);
+  const [samplers,    setSamplers]    = useState([]);
+  const [namePresets, setNamePresets] = useState([]);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [successList, setSuccessList] = useState([]);
 
   // Single mode
-  const [single,  setSingle]  = useState(emptySample());
+  const [single,         setSingle]         = useState(emptySample());
   const [newSamplerName, setNewSamplerName] = useState('');
   const [addingSampler,  setAddingSampler]  = useState(false);
   const [addingName,     setAddingName]     = useState(false);
   const [newCustomName,  setNewCustomName]  = useState('');
 
   // Bulk mode
-  const [bulkSamples, setBulkSamples] = useState([emptySample()]);
-  const [bulkSampler, setBulkSampler] = useState('');
+  const [bulkSamples,       setBulkSamples]       = useState([emptySample()]);
+  const [bulkSampler,       setBulkSampler]       = useState('');
   const [bulkCustomSampler, setBulkCustomSampler] = useState('');
   const [addingBulkSampler, setAddingBulkSampler] = useState(false);
 
@@ -81,7 +86,7 @@ export default function SampleRegistrationPage() {
       .catch(() => {});
   }, []);
 
-  // When department changes (shared between modes)
+  // When department changes
   useEffect(() => {
     if (!deptId) {
       setBrands([]); setNamePresets([]);
@@ -106,7 +111,7 @@ export default function SampleRegistrationPage() {
     });
   };
 
-  // ── Load categories/types for a bulk row ─────────────────
+  // ── Load categories/types for a bulk row ──────────────────
   const loadBulkCats = async (idx) => {
     if (!deptId) return;
     try {
@@ -124,7 +129,13 @@ export default function SampleRegistrationPage() {
       ]);
       setBulkSamples(prev => {
         const updated = [...prev];
-        updated[idx] = { ...updated[idx], types: types||[], subtypes: subtypes||[], typeId:'', subtypeId:'' };
+        updated[idx] = {
+          ...updated[idx],
+          types    : types||[],
+          subtypes : subtypes||[],
+          typeId   : '',
+          subtypeId: '',
+        };
         return updated;
       });
     } catch(e){}
@@ -134,14 +145,13 @@ export default function SampleRegistrationPage() {
   const addBulkRow = () => {
     if (bulkSamples.length >= 20) { toast.warning('Maximum 20 samples at once'); return; }
     setBulkSamples(prev => {
-      const last = prev[prev.length-1];
+      const last   = prev[prev.length-1];
       const newRow = {
         ...emptySample(),
-        id    : Date.now() + Math.random(),
-        cats  : last.cats || [],
-        // Copy category selection for convenience
-        catId : last.catId,
-        types : last.types || [],
+        id   : Date.now() + Math.random(),
+        cats : last.cats || [],
+        catId: last.catId,
+        types: last.types || [],
       };
       return [...prev, newRow];
     });
@@ -172,97 +182,6 @@ export default function SampleRegistrationPage() {
     } catch(e) { toast.error('Could not save sample name'); return null; }
   };
 
-  // ── SINGLE SUBMIT ─────────────────────────────────────────
-  const submitSingle = async (e) => {
-    e.preventDefault();
-    const finalName    = single.isCustomName ? single.customName.trim() : single.sampleName;
-    const finalSampler = single.isCustomSamp ? single.customSampler.trim() : single.samplerName;
-
-    if (!finalName)    { toast.warning('Enter a sample name'); return; }
-    if (!deptId)       { toast.warning('Select a department'); return; }
-    if (!single.catId) { toast.warning('Select a category'); return; }
-    if (!single.typeId){ toast.warning('Select a sample type'); return; }
-    if (single.needsSub && !single.subtypeId){ toast.warning('Select a form (LBD, HBD or IDP)'); return; }
-    if (!finalSampler) { toast.warning('Select the sampler who collected this sample'); return; }
-
-    setSubmitting(true);
-    try {
-      const res = await samplesService.registerSample({
-        sample_name    : finalName,
-        department_id  : deptId,
-        sample_type_id : single.typeId,
-        brand_id       : single.brandId   || undefined,
-        subtype_id     : single.subtypeId || undefined,
-        batch_number   : single.batchNo.trim() || undefined,
-        notes          : single.notes.trim()   || undefined,
-        sampler_name   : finalSampler,
-      });
-
-      setSuccessList([{
-        sampleNumber: res.sampleNumber,
-        sampleName  : finalName,
-        sampler     : finalSampler,
-      }]);
-
-      toast.success(`✅ ${res.sampleNumber} registered`);
-      setSingle(prev => ({ ...prev, sampleName:'', customName:'', batchNo:'', notes:'', subtypeId:'' }));
-      setTimeout(() => setSuccessList([]), 10000);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Registration failed');
-    } finally { setSubmitting(false); }
-  };
-
-  // ── BULK SUBMIT ───────────────────────────────────────────
-  const submitBulk = async (e) => {
-    e.preventDefault();
-    const finalSampler = addingBulkSampler ? bulkCustomSampler.trim() : bulkSampler;
-    if (!deptId)       { toast.warning('Select a department first'); return; }
-    if (!finalSampler) { toast.warning('Select the sampler who collected these samples'); return; }
-
-    // Validate each row
-    for (let i = 0; i < bulkSamples.length; i++) {
-      const s = bulkSamples[i];
-      const name = s.isCustomName ? s.customName.trim() : s.sampleName;
-      if (!name)    { toast.warning(`Row ${i+1}: Enter a sample name`); return; }
-      if (!s.catId) { toast.warning(`Row ${i+1}: Select a category`); return; }
-      if (!s.typeId){ toast.warning(`Row ${i+1}: Select a sample type`); return; }
-      if (s.needsSub && !s.subtypeId){ toast.warning(`Row ${i+1}: Select a form (LBD, HBD or IDP)`); return; }
-    }
-
-    setSubmitting(true);
-    try {
-      const payload = bulkSamples.map(s => ({
-        sample_name    : s.isCustomName ? s.customName.trim() : s.sampleName,
-        department_id  : deptId,
-        sample_type_id : s.typeId,
-        brand_id       : s.brandId   || undefined,
-        subtype_id     : s.subtypeId || undefined,
-        batch_number   : s.batchNo.trim() || undefined,
-        notes          : s.notes.trim()   || undefined,
-        sampler_name   : finalSampler,
-      }));
-
-      const res = await samplesService.registerBulkSamples(payload);
-
-      setSuccessList(res.registered.map(r => ({
-        sampleNumber: r.sampleNumber,
-        sampleName  : r.sample_name,
-        sampler     : finalSampler,
-      })));
-
-      if (res.errors.length > 0) {
-        res.errors.forEach(e => toast.error(`${e.sample_name}: ${e.error}`));
-      }
-
-      toast.success(`✅ ${res.successful} sample(s) registered successfully`);
-      setBulkSamples([emptySample()]);
-      setBulkSampler('');
-      setTimeout(() => setSuccessList([]), 15000);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Bulk registration failed');
-    } finally { setSubmitting(false); }
-  };
-
   // ── Load categories for single mode ──────────────────────
   const loadSingleCats = async (newDeptId) => {
     if (!newDeptId) return;
@@ -281,13 +200,119 @@ export default function SampleRegistrationPage() {
       ]);
       setSingle(prev => ({
         ...prev,
-        types   : types||[],
-        subtypes: subtypes||[],
-        typeId  : '',
+        types    : types||[],
+        subtypes : subtypes||[],
+        typeId   : '',
         subtypeId: '',
-        needsSub: false,
+        needsSub : false,
       }));
     } catch(e){}
+  };
+
+  // ── SINGLE SUBMIT ─────────────────────────────────────────
+  const submitSingle = async (e) => {
+    e.preventDefault();
+    const finalName    = single.isCustomName ? single.customName.trim() : single.sampleName;
+    const finalSampler = single.isCustomSamp ? single.customSampler.trim() : single.samplerName;
+
+    if (!finalName)    { toast.warning('Enter a sample name'); return; }
+    if (!deptId)       { toast.warning('Select a department'); return; }
+    if (!single.catId) { toast.warning('Select a category'); return; }
+    if (!single.typeId){ toast.warning('Select a sample type'); return; }
+    if (single.needsSub && !single.subtypeId){ toast.warning('Select a form (LBD, HBD or IDP)'); return; }
+    if (!finalSampler) { toast.warning('Select the sampler who collected this sample'); return; }
+
+    setSubmitting(true);
+    try {
+      const res = await samplesService.registerSample({
+        sample_name     : finalName,
+        department_id   : deptId,
+        sample_type_id  : single.typeId,
+        brand_id        : single.brandId      || undefined,
+        subtype_id      : single.subtypeId    || undefined,
+        vehicle_number  : single.vehicleNo.trim()   || undefined,
+        container_number: single.containerNo.trim()  || undefined,
+        batch_number    : single.batchNo.trim()      || undefined,
+        notes           : single.notes.trim()        || undefined,
+        sampler_name    : finalSampler,
+      });
+
+      setSuccessList([{
+        sampleNumber: res.sampleNumber,
+        sampleName  : finalName,
+        sampler     : finalSampler,
+      }]);
+
+      toast.success(`✅ ${res.sampleNumber} registered`);
+
+      // Reset registration fields but keep dept/category for quick re-entry
+      setSingle(prev => ({
+        ...prev,
+        sampleName   : '',
+        customName   : '',
+        vehicleNo    : '',
+        containerNo  : '',
+        batchNo      : '',
+        notes        : '',
+        subtypeId    : '',
+      }));
+      setTimeout(() => setSuccessList([]), 10000);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Registration failed');
+    } finally { setSubmitting(false); }
+  };
+
+  // ── BULK SUBMIT ───────────────────────────────────────────
+  const submitBulk = async (e) => {
+    e.preventDefault();
+    const finalSampler = addingBulkSampler ? bulkCustomSampler.trim() : bulkSampler;
+
+    if (!deptId)       { toast.warning('Select a department first'); return; }
+    if (!finalSampler) { toast.warning('Select the sampler who collected these samples'); return; }
+
+    for (let i = 0; i < bulkSamples.length; i++) {
+      const s    = bulkSamples[i];
+      const name = s.isCustomName ? s.customName.trim() : s.sampleName;
+      if (!name)    { toast.warning(`Row ${i+1}: Enter a sample name`); return; }
+      if (!s.catId) { toast.warning(`Row ${i+1}: Select a category`); return; }
+      if (!s.typeId){ toast.warning(`Row ${i+1}: Select a sample type`); return; }
+      if (s.needsSub && !s.subtypeId){ toast.warning(`Row ${i+1}: Select a form`); return; }
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = bulkSamples.map(s => ({
+        sample_name     : s.isCustomName ? s.customName.trim() : s.sampleName,
+        department_id   : deptId,
+        sample_type_id  : s.typeId,
+        brand_id        : s.brandId       || undefined,
+        subtype_id      : s.subtypeId     || undefined,
+        vehicle_number  : s.vehicleNo.trim()    || undefined,
+        container_number: s.containerNo.trim()   || undefined,
+        batch_number    : s.batchNo.trim()       || undefined,
+        notes           : s.notes.trim()         || undefined,
+        sampler_name    : finalSampler,
+      }));
+
+      const res = await samplesService.registerBulkSamples(payload);
+
+      setSuccessList(res.registered.map(r => ({
+        sampleNumber: r.sampleNumber,
+        sampleName  : r.sample_name,
+        sampler     : finalSampler,
+      })));
+
+      if (res.errors?.length > 0) {
+        res.errors.forEach(e => toast.error(`${e.sample_name}: ${e.error}`));
+      }
+
+      toast.success(`✅ ${res.successful} sample(s) registered successfully`);
+      setBulkSamples([emptySample()]);
+      setBulkSampler('');
+      setTimeout(() => setSuccessList([]), 15000);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Bulk registration failed');
+    } finally { setSubmitting(false); }
   };
 
   // ── Styles ────────────────────────────────────────────────
@@ -320,11 +345,52 @@ export default function SampleRegistrationPage() {
     background: dis ? '#A78BFA' : `linear-gradient(135deg,${P},${PM})`,
     color:'#fff', border:'none', borderRadius:'12px', padding:'14px',
     fontSize:'15px', fontWeight:'700', cursor: dis?'not-allowed':'pointer',
-    fontFamily:'inherit', boxShadow: dis?'none':'0 4px 12px rgba(124,58,237,0.3)',
+    fontFamily:'inherit',
+    boxShadow: dis ? 'none' : '0 4px 12px rgba(124,58,237,0.3)',
   });
 
-  // ── Shared sampler dropdown section ──────────────────────
- 
+  // ── Reusable: 3-field vehicle/container/batch section ─────
+  // Used in both single (reads from single state) and
+  // bulk (reads from bulk row via updateBulk)
+  const VehicleFields = ({ vehicleNo, containerNo, batchNo, onChange }) => (
+    <div style={{ background:'#F9F7FF', border:`1px solid ${PL}`, borderRadius:'10px', padding:'12px 14px', marginBottom:'14px' }}>
+      <div style={{ fontSize:'11px', fontWeight:'700', color:P, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+        🚛 Transport & Batch Details
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
+        <div>
+          <label style={lbl}>Vehicle Number</label>
+          <input
+            type="text"
+            value={vehicleNo}
+            onChange={e => onChange('vehicleNo', e.target.value)}
+            style={inp}
+            placeholder="e.g. UAX 123F"
+          />
+        </div>
+        <div>
+          <label style={lbl}>Container Number</label>
+          <input
+            type="text"
+            value={containerNo}
+            onChange={e => onChange('containerNo', e.target.value)}
+            style={inp}
+            placeholder="e.g. CTR-001"
+          />
+        </div>
+        <div>
+          <label style={lbl}>Batch Number</label>
+          <input
+            type="text"
+            value={batchNo}
+            onChange={e => onChange('batchNo', e.target.value)}
+            style={inp}
+            placeholder="e.g. BUL-2026-001"
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
@@ -355,18 +421,19 @@ export default function SampleRegistrationPage() {
           border:`1.5px solid ${PL}`,
         }}>
           {[
-            { key:'single', label:'📋 Single Sample', desc:'Register one sample' },
-            { key:'bulk',   label:'📦 Bulk Registration', desc:'Register multiple at once' },
+            { key:'single', label:'📋 Single Sample',       desc:'Register one sample'           },
+            { key:'bulk',   label:'📦 Bulk Registration',   desc:'Register multiple at once'     },
           ].map(m => (
-            <button key={m.key} type="button" onClick={() => { setMode(m.key); setSuccessList([]); }}
+            <button key={m.key} type="button"
+              onClick={() => { setMode(m.key); setSuccessList([]); }}
               style={{
                 flex:1, padding:'10px 8px', borderRadius:'10px', border:'none',
                 cursor:'pointer', fontFamily:'inherit', textAlign:'center',
                 background: mode===m.key ? `linear-gradient(135deg,${P},${PM})` : 'transparent',
-                color: mode===m.key ? '#fff' : '#6B7280',
-                fontWeight:'700', fontSize:'13px',
-                boxShadow: mode===m.key ? '0 2px 8px rgba(107,33,168,0.3)' : 'none',
-                transition:'all 0.2s',
+                color      : mode===m.key ? '#fff' : '#6B7280',
+                fontWeight :'700', fontSize:'13px',
+                boxShadow  : mode===m.key ? '0 2px 8px rgba(107,33,168,0.3)' : 'none',
+                transition :'all 0.2s',
               }}>
               {m.label}
               <div style={{ fontSize:'10px', opacity:0.8, marginTop:'2px' }}>{m.desc}</div>
@@ -405,9 +472,9 @@ export default function SampleRegistrationPage() {
           </div>
         </div>
 
-        {/* ═════════════════════════════════════════════════
+        {/* ═══════════════════════════════════════════════════
             SINGLE MODE
-            ═════════════════════════════════════════════════ */}
+        ═══════════════════════════════════════════════════ */}
         {mode === 'single' && deptId && (
           <form onSubmit={submitSingle}>
             <div style={{ background:'#fff', borderRadius:'16px', border:`1.5px solid ${PL}`, padding:'20px', marginBottom:'16px' }}>
@@ -457,7 +524,8 @@ export default function SampleRegistrationPage() {
                         Save & Use
                       </button>
                     </div>
-                    <button type="button" style={linkBtn} onClick={() => setSingle(prev=>({...prev,isCustomName:false}))}>
+                    <button type="button" style={linkBtn}
+                      onClick={() => setSingle(prev=>({...prev,isCustomName:false}))}>
                       ← Pick from list
                     </button>
                   </>
@@ -489,25 +557,25 @@ export default function SampleRegistrationPage() {
                 </div>
               )}
 
-              {/* LBD / HBD / IDP — filtered by sample type */}
-{single.needsSub && (single.subtypes||[]).length > 0 && (
-  <div style={fld}>
-    <label style={lbl}>Form *</label>
-    <select value={single.subtypeId}
-      onChange={e => setSingle(prev=>({...prev,subtypeId:e.target.value}))} style={sel}>
-      <option value="">— Select Form —</option>
-      {(single.subtypes||[])
-        .filter(sub => {
-          const typeName = ((single.types||[]).find(t=>t.id===single.typeId)?.name||'').toLowerCase();
-          if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
-          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
-          return true;
-        })
-        .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
-      }
-    </select>
-  </div>
-)}
+              {/* LBD / HBD / IDP */}
+              {single.needsSub && (single.subtypes||[]).length > 0 && (
+                <div style={fld}>
+                  <label style={lbl}>Form *</label>
+                  <select value={single.subtypeId}
+                    onChange={e => setSingle(prev=>({...prev,subtypeId:e.target.value}))} style={sel}>
+                    <option value="">— Select Form —</option>
+                    {(single.subtypes||[])
+                      .filter(sub => {
+                        const typeName = ((single.types||[]).find(t=>t.id===single.typeId)?.name||'').toLowerCase();
+                        if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
+                        if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
+                        return true;
+                      })
+                      .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+                    }
+                  </select>
+                </div>
+              )}
 
               {/* Brand */}
               {brands.length > 0 && (
@@ -521,14 +589,16 @@ export default function SampleRegistrationPage() {
                 </div>
               )}
 
-              {/* Batch + notes */}
-              <div style={fld}>
-                <label style={lbl}>Batch / Lot Number</label>
-                <input type="text" value={single.batchNo}
-                  onChange={e => setSingle(prev=>({...prev,batchNo:e.target.value}))}
-                  style={inp} placeholder="Optional" />
-              </div>
-              <div style={fld}>
+              {/* ── Vehicle / Container / Batch (replaces Batch/Lot) ── */}
+              <VehicleFields
+                vehicleNo={single.vehicleNo}
+                containerNo={single.containerNo}
+                batchNo={single.batchNo}
+                onChange={(field, val) => setSingle(prev=>({...prev,[field]:val}))}
+              />
+
+              {/* Notes */}
+              <div style={{ marginBottom:0 }}>
                 <label style={lbl}>Notes</label>
                 <textarea value={single.notes}
                   onChange={e => setSingle(prev=>({...prev,notes:e.target.value}))}
@@ -538,76 +608,51 @@ export default function SampleRegistrationPage() {
             </div>
 
             {/* ── Sampler Signature ── */}
-<div style={{
-  background:'#F5F3FF', borderRadius:'12px',
-  border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
-}}>
-  <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
-    ✍️ Sampler Signature *
-  </div>
-  <p style={{ fontSize:'12px', color:PM, marginBottom:'10px', margin:'0 0 10px' }}>
-    Select the sampler who collected this sample.
-  </p>
-
-  {!single.isCustomSamp ? (
-    <>
-      <select
-        value={single.samplerName}
-        onChange={e => setSingle(prev => ({ ...prev, samplerName: e.target.value }))}
-        style={sel}
-      >
-        <option value="">— Select Sampler —</option>
-        {samplers.map(s => (
-          <option key={s.id} value={s.full_name}>{s.full_name}</option>
-        ))}
-      </select>
-      {single.samplerName && (
-        <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
-          ✅ Signed by: {single.samplerName}
-        </div>
-      )}
-      <button
-        type="button"
-        style={linkBtn}
-        onClick={() => setSingle(prev => ({ ...prev, isCustomSamp: true }))}
-      >
-        + Sampler not in list? Add them
-      </button>
-    </>
-  ) : (
-    <>
-      <div style={{ display:'flex', gap:'8px' }}>
-        <input
-          type="text"
-          value={single.customSampler}
-          onChange={e => setSingle(prev => ({ ...prev, customSampler: e.target.value }))}
-          style={{ ...inp, flex:1 }}
-          placeholder="Enter sampler full name..."
-        />
-        <button
-          type="button"
-          style={addBtn}
-          onClick={async () => {
-            const saved = await addNewSampler(single.customSampler);
-            if (saved) setSingle(prev => ({
-              ...prev, samplerName: saved,
-              isCustomSamp: false, customSampler: '',
-            }));
-          }}
-        >
-          Save & Use
-        </button>
-      </div>
-      <button
-        type="button"
-        style={linkBtn}
-        onClick={() => setSingle(prev => ({ ...prev, isCustomSamp: false }))}
-      >
-        ← Pick from list
-      </button>
-    </>
-  )}
-</div>
+            <div style={{ background:'#F5F3FF', borderRadius:'12px', border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px' }}>
+              <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
+                ✍️ Sampler Signature *
+              </div>
+              <p style={{ fontSize:'12px', color:PM, margin:'0 0 10px' }}>
+                Select the sampler who collected this sample.
+              </p>
+              {!single.isCustomSamp ? (
+                <>
+                  <select value={single.samplerName}
+                    onChange={e => setSingle(prev=>({...prev,samplerName:e.target.value}))} style={sel}>
+                    <option value="">— Select Sampler —</option>
+                    {samplers.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
+                  </select>
+                  {single.samplerName && (
+                    <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
+                      ✅ Signed by: {single.samplerName}
+                    </div>
+                  )}
+                  <button type="button" style={linkBtn}
+                    onClick={() => setSingle(prev=>({...prev,isCustomSamp:true}))}>
+                    + Sampler not in list? Add them
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <input type="text" value={single.customSampler}
+                      onChange={e => setSingle(prev=>({...prev,customSampler:e.target.value}))}
+                      style={{ ...inp, flex:1 }} placeholder="Enter sampler full name..." />
+                    <button type="button" style={addBtn}
+                      onClick={async () => {
+                        const saved = await addNewSampler(single.customSampler);
+                        if (saved) setSingle(prev=>({...prev,samplerName:saved,isCustomSamp:false,customSampler:''}));
+                      }}>
+                      Save & Use
+                    </button>
+                  </div>
+                  <button type="button" style={linkBtn}
+                    onClick={() => setSingle(prev=>({...prev,isCustomSamp:false}))}>
+                    ← Pick from list
+                  </button>
+                </>
+              )}
+            </div>
 
             <button type="submit" disabled={submitting} style={primaryBtn(submitting)}>
               {submitting ? 'Registering...' : '🧪 Register Sample'}
@@ -615,97 +660,61 @@ export default function SampleRegistrationPage() {
           </form>
         )}
 
-        {/* ═════════════════════════════════════════════════
+        {/* ═══════════════════════════════════════════════════
             BULK MODE
-            ═════════════════════════════════════════════════ */}
+        ═══════════════════════════════════════════════════ */}
         {mode === 'bulk' && deptId && (
           <form onSubmit={submitBulk}>
 
             {/* ── Bulk Sampler Signature ── */}
-<div style={{
-  background:'#F5F3FF', borderRadius:'12px',
-  border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px',
-}}>
-  <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
-    ✍️ Sampler Signature * (applies to all samples below)
-  </div>
-
-  {!addingBulkSampler ? (
-    <>
-      <select
-        value={bulkSampler}
-        onChange={e => setBulkSampler(e.target.value)}
-        style={sel}
-      >
-        <option value="">— Select Sampler —</option>
-        {samplers.map(s => (
-          <option key={s.id} value={s.full_name}>{s.full_name}</option>
-        ))}
-      </select>
-      {bulkSampler && (
-        <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
-          ✅ Signed by: {bulkSampler}
-        </div>
-      )}
-      <button
-        type="button"
-        style={linkBtn}
-        onClick={() => setAddingBulkSampler(true)}
-      >
-        + Sampler not in list? Add them
-      </button>
-    </>
-  ) : (
-    <>
-      <div style={{ display:'flex', gap:'8px' }}>
-        <input
-          type="text"
-          value={bulkCustomSampler}
-          onChange={e => setBulkCustomSampler(e.target.value)}
-          style={{ ...inp, flex:1 }}
-          placeholder="Enter sampler full name..."
-        />
-        <button
-          type="button"
-          style={addBtn}
-          onClick={async () => {
-            const saved = await addNewSampler(bulkCustomSampler);
-            if (saved) {
-              setBulkSampler(saved);
-              setAddingBulkSampler(false);
-              setBulkCustomSampler('');
-            }
-          }}
-        >
-          Save & Use
-        </button>
-      </div>
-      <button
-        type="button"
-        style={linkBtn}
-        onClick={() => setAddingBulkSampler(false)}
-      >
-        ← Pick from list
-      </button>
-    </>
-  )}
-</div>
+            <div style={{ background:'#F5F3FF', borderRadius:'12px', border:`1.5px solid ${PL}`, padding:'14px', marginBottom:'16px' }}>
+              <div style={{ fontSize:'12px', fontWeight:'700', color:P, marginBottom:'6px' }}>
+                ✍️ Sampler Signature * (applies to all samples below)
+              </div>
+              {!addingBulkSampler ? (
+                <>
+                  <select value={bulkSampler} onChange={e => setBulkSampler(e.target.value)} style={sel}>
+                    <option value="">— Select Sampler —</option>
+                    {samplers.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
+                  </select>
+                  {bulkSampler && (
+                    <div style={{ marginTop:'8px', padding:'7px 10px', background:'#EDE9FE', borderRadius:'8px', fontSize:'13px', color:P, fontWeight:'600' }}>
+                      ✅ Signed by: {bulkSampler}
+                    </div>
+                  )}
+                  <button type="button" style={linkBtn} onClick={() => setAddingBulkSampler(true)}>
+                    + Sampler not in list? Add them
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <input type="text" value={bulkCustomSampler}
+                      onChange={e => setBulkCustomSampler(e.target.value)}
+                      style={{ ...inp, flex:1 }} placeholder="Enter sampler full name..." />
+                    <button type="button" style={addBtn}
+                      onClick={async () => {
+                        const saved = await addNewSampler(bulkCustomSampler);
+                        if (saved) { setBulkSampler(saved); setAddingBulkSampler(false); setBulkCustomSampler(''); }
+                      }}>
+                      Save & Use
+                    </button>
+                  </div>
+                  <button type="button" style={linkBtn} onClick={() => setAddingBulkSampler(false)}>
+                    ← Pick from list
+                  </button>
+                </>
+              )}
+            </div>
 
             {/* Sample rows */}
             <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'16px' }}>
               {bulkSamples.map((s, idx) => (
-                <div key={s.id} style={{
-                  background:'#fff', borderRadius:'16px',
-                  border:`1.5px solid ${PL}`, padding:'16px',
-                  position:'relative',
-                }}>
+                <div key={s.id} style={{ background:'#fff', borderRadius:'16px', border:`1.5px solid ${PL}`, padding:'16px' }}>
+
                   {/* Row header */}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-                    <div style={{
-                      background:`linear-gradient(135deg,${P},${PM})`,
-                      color:'#fff', borderRadius:'8px',
-                      padding:'4px 12px', fontSize:'12px', fontWeight:'700',
-                    }}>
+                    <div style={{ background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', borderRadius:'8px', padding:'4px 12px', fontSize:'12px', fontWeight:'700' }}>
                       Sample {idx + 1}
                     </div>
                     {bulkSamples.length > 1 && (
@@ -719,12 +728,9 @@ export default function SampleRegistrationPage() {
                   {/* Sample name */}
                   <div style={fld}>
                     <label style={lbl}>Sample Name *</label>
-                    <select
-                      value={s.sampleName}
-                      onChange={e => updateBulk(idx, 'sampleName', e.target.value)}
-                      style={sel}
-                      onFocus={() => { if (!s.cats?.length) loadBulkCats(idx); }}
-                    >
+                    <select value={s.sampleName}
+                      onChange={e => updateBulk(idx,'sampleName',e.target.value)} style={sel}
+                      onFocus={() => { if (!s.cats?.length) loadBulkCats(idx); }}>
                       <option value="">— Select name —</option>
                       {namePresets.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                     </select>
@@ -733,15 +739,9 @@ export default function SampleRegistrationPage() {
                   {/* Category */}
                   <div style={fld}>
                     <label style={lbl}>Category *</label>
-                    <select
-                      value={s.catId}
-                      onChange={e => {
-                        updateBulk(idx, 'catId', e.target.value);
-                        loadBulkTypes(idx, e.target.value);
-                      }}
-                      style={sel}
-                      onFocus={() => { if (!s.cats?.length) loadBulkCats(idx); }}
-                    >
+                    <select value={s.catId}
+                      onChange={e => { updateBulk(idx,'catId',e.target.value); loadBulkTypes(idx,e.target.value); }} style={sel}
+                      onFocus={() => { if (!s.cats?.length) loadBulkCats(idx); }}>
                       <option value="">— Select Category —</option>
                       {(s.cats||[]).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
@@ -751,47 +751,52 @@ export default function SampleRegistrationPage() {
                   {s.catId && (
                     <div style={fld}>
                       <label style={lbl}>Sample Type *</label>
-                      <select
-                        value={s.typeId}
+                      <select value={s.typeId}
                         onChange={e => {
                           const t = (s.types||[]).find(x=>x.id===e.target.value);
-                          updateBulk(idx, 'typeId', e.target.value);
-                          updateBulk(idx, 'needsSub', t?.requires_subtype||false);
-                          updateBulk(idx, 'subtypeId', '');
-                        }}
-                        style={sel}
-                      >
+                          updateBulk(idx,'typeId',e.target.value);
+                          updateBulk(idx,'needsSub',t?.requires_subtype||false);
+                          updateBulk(idx,'subtypeId','');
+                        }} style={sel}>
                         <option value="">— Select Type —</option>
                         {(s.types||[]).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                   )}
 
-                  {/* LBD / HBD / IDP — filtered by sample type */}
-{s.needsSub && (s.subtypes||[]).length > 0 && (
-  <div style={fld}>
-    <label style={lbl}>Form *</label>
-    <select value={s.subtypeId}
-      onChange={e => updateBulk(idx,'subtypeId',e.target.value)} style={sel}>
-      <option value="">— Select Form —</option>
-      {(s.subtypes||[])
-        .filter(sub => {
-          const typeName = ((s.types||[]).find(t=>t.id===s.typeId)?.name||'').toLowerCase();
-          if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
-          if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
-          return true;
-        })
-        .map(st => <option key={st.id} value={st.id}>{st.name}</option>)
-      }
-    </select>
-  </div>
-)}
+                  {/* LBD / HBD / IDP */}
+                  {s.needsSub && (s.subtypes||[]).length > 0 && (
+                    <div style={fld}>
+                      <label style={lbl}>Form *</label>
+                      <select value={s.subtypeId}
+                        onChange={e => updateBulk(idx,'subtypeId',e.target.value)} style={sel}>
+                        <option value="">— Select Form —</option>
+                        {(s.subtypes||[])
+                          .filter(sub => {
+                            const typeName = ((s.types||[]).find(t=>t.id===s.typeId)?.name||'').toLowerCase();
+                            if (typeName === 'pa' || typeName.startsWith('pa ')) return sub.code === 'HBD';
+                            if (typeName.includes('base') || typeName.includes('powder')) return sub.code === 'LBD' || sub.code === 'HBD' || sub.code === 'IDP';
+                            return true;
+                          })
+                          .map(st => <option key={st.id} value={st.id}>{st.name}</option>)
+                        }
+                      </select>
+                    </div>
+                  )}
 
-                  {/* Batch number */}
+                  {/* ── Vehicle / Container / Batch per row ── */}
+                  <VehicleFields
+                    vehicleNo={s.vehicleNo}
+                    containerNo={s.containerNo}
+                    batchNo={s.batchNo}
+                    onChange={(field, val) => updateBulk(idx, field, val)}
+                  />
+
+                  {/* Notes */}
                   <div style={{ marginBottom:0 }}>
-                    <label style={lbl}>Batch Number</label>
-                    <input type="text" value={s.batchNo}
-                      onChange={e => updateBulk(idx,'batchNo',e.target.value)}
+                    <label style={lbl}>Notes</label>
+                    <input type="text" value={s.notes}
+                      onChange={e => updateBulk(idx,'notes',e.target.value)}
                       style={inp} placeholder="Optional" />
                   </div>
                 </div>
@@ -800,20 +805,12 @@ export default function SampleRegistrationPage() {
 
             {/* Add row button */}
             <button type="button" onClick={addBulkRow}
-              style={{
-                width:'100%', padding:'12px', borderRadius:'12px',
-                border:`2px dashed ${PM}`, background:'#F5F3FF',
-                color:PM, fontSize:'14px', fontWeight:'700',
-                cursor:'pointer', fontFamily:'inherit', marginBottom:'16px',
-              }}>
+              style={{ width:'100%', padding:'12px', borderRadius:'12px', border:`2px dashed ${PM}`, background:'#F5F3FF', color:PM, fontSize:'14px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', marginBottom:'16px' }}>
               + Add Another Sample ({bulkSamples.length}/20)
             </button>
 
             {/* Summary */}
-            <div style={{
-              background:'#EDE9FE', borderRadius:'12px', padding:'12px 16px',
-              marginBottom:'16px', fontSize:'13px', color:P,
-            }}>
+            <div style={{ background:'#EDE9FE', borderRadius:'12px', padding:'12px 16px', marginBottom:'16px', fontSize:'13px', color:P }}>
               <strong>Ready to register:</strong> {bulkSamples.length} sample(s)
               {bulkSampler && <span> — Sampler: <strong>{bulkSampler}</strong></span>}
             </div>
@@ -833,7 +830,6 @@ export default function SampleRegistrationPage() {
         )}
 
       </div>
-
       <PageFooter />
     </div>
   );
