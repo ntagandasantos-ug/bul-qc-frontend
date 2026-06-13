@@ -353,44 +353,44 @@ export default function SampleRegistrationPage() {
   // Used in both single (reads from single state) and
   // bulk (reads from bulk row via updateBulk)
   const VehicleFields = ({ vehicleNo, containerNo, batchNo, onChange }) => (
-    <div style={{ background:'#F9F7FF', border:`1px solid ${PL}`, borderRadius:'10px', padding:'12px 14px', marginBottom:'14px' }}>
-      <div style={{ fontSize:'11px', fontWeight:'700', color:P, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-        🚛 Transport & Batch Details
+  <div style={{ background:'#F9F7FF', border:`1px solid ${PL}`, borderRadius:'10px', padding:'12px 14px', marginBottom:'14px', position:'relative', zIndex:1 }}>
+    <div style={{ fontSize:'11px', fontWeight:'700', color:P, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+      🚛 Transport & Batch Details
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
+      <div>
+        <label style={lbl}>Vehicle Number</label>
+        <input
+          type="text"
+          value={vehicleNo}
+          onChange={e => onChange('vehicleNo', e.target.value)}
+          placeholder="e.g. UAX 123F"
+          style={{ ...inp, pointerEvents:'auto', position:'relative', zIndex:2 }}
+        />
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
-        <div>
-          <label style={lbl}>Vehicle Number</label>
-          <input
-            type="text"
-            value={vehicleNo}
-            onChange={e => onChange('vehicleNo', e.target.value)}
-            style={inp}
-            placeholder="e.g. UAX 123F"
-          />
-        </div>
-        <div>
-          <label style={lbl}>Container Number</label>
-          <input
-            type="text"
-            value={containerNo}
-            onChange={e => onChange('containerNo', e.target.value)}
-            style={inp}
-            placeholder="e.g. CTR-001"
-          />
-        </div>
-        <div>
-          <label style={lbl}>Batch Number</label>
-          <input
-            type="text"
-            value={batchNo}
-            onChange={e => onChange('batchNo', e.target.value)}
-            style={inp}
-            placeholder="e.g. BUL-2026-001"
-          />
-        </div>
+      <div>
+        <label style={lbl}>Container Number</label>
+        <input
+          type="text"
+          value={containerNo}
+          onChange={e => onChange('containerNo', e.target.value)}
+          placeholder="e.g. CTR-001"
+          style={{ ...inp, pointerEvents:'auto', position:'relative', zIndex:2 }}
+        />
+      </div>
+      <div>
+        <label style={lbl}>Batch Number</label>
+        <input
+          type="text"
+          value={batchNo}
+          onChange={e => onChange('batchNo', e.target.value)}
+          placeholder="e.g. BUL-2026-001"
+          style={{ ...inp, pointerEvents:'auto', position:'relative', zIndex:2 }}
+        />
       </div>
     </div>
-  );
+  </div>
+);
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
