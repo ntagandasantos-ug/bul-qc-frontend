@@ -1,8 +1,8 @@
 // ============================================================
 // FILE: src/pages/AnalysisPage.jsx  — Complete final version
 // Step 1: Select tests · Step 2: Enter results
-// Fixes: LeftPanel inlined (no dropdown close bug)
-//        Test confirm goes via backend API (no RLS error)
+// Compartment mode: Boiler Fuels & Liquids samples get
+//   C1/C2/C3/C4... inputs per test (stored as JSON)
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -22,6 +22,11 @@ const G  = '#FFB81C';
 const GR = '#16A34A';
 const RD = '#DC2626';
 
+// ── Sample types that use compartment mode ────────────────
+// Boiler Fuels & Liquids: Petrol, Diesel, Furnace Oil
+const COMPARTMENT_TYPE_CODES = ['BLR_PETROL', 'BLR_DIESEL', 'BLR_FO'];
+
+// ── Standard result evaluation ────────────────────────────
 function evaluate(value, spec, resultType) {
   if (!value?.trim()) return { status: null, pass: null };
   if (resultType === 'text') {
@@ -29,12 +34,12 @@ function evaluate(value, spec, resultType) {
     const v = value.toLowerCase().trim();
     const s = spec.display_spec.toLowerCase().trim();
     let pass = true;
-    if      (s === 'pink')                  pass = v === 'pink';
-    else if (s === 'black')                 pass = v === 'black';
-    else if (s === 'nil')                   pass = v === 'nil';
-    else if (s.includes('yellow'))          pass = v === 'yellow' || v === 'light yellow';
-    else if (s === 'to pass the test')      pass = v === 'to pass the test';
-    else if (s === 'negative')              pass = v === 'negative';
+    if      (s === 'pink')             pass = v === 'pink';
+    else if (s === 'black')            pass = v === 'black';
+    else if (s === 'nil')              pass = v === 'nil';
+    else if (s.includes('yellow'))     pass = v === 'yellow' || v === 'light yellow';
+    else if (s === 'to pass the test') pass = v === 'to pass the test';
+    else if (s === 'negative')         pass = v === 'negative';
     return { status: pass ? 'pass' : 'fail_high', pass };
   }
   const num = parseFloat(value);
@@ -44,6 +49,31 @@ function evaluate(value, spec, resultType) {
   return { status: 'pass', pass: true };
 }
 
+// ── Evaluate all compartments against spec ────────────────
+function evaluateCompartments(compObj, spec) {
+  const vals = Object.values(compObj || {}).filter(v => v?.trim());
+  if (!vals.length) return { status: null, pass: null };
+  let anyFail = false; let anyLow = false; let anyHigh = false;
+  vals.forEach(v => {
+    const num = parseFloat(v);
+    if (isNaN(num)) return;
+    if (spec?.min_value != null && num < parseFloat(spec.min_value)) { anyFail = true; anyLow  = true; }
+    if (spec?.max_value != null && num > parseFloat(spec.max_value)) { anyFail = true; anyHigh = true; }
+  });
+  if (!anyFail) return { status: 'pass', pass: true };
+  return { status: anyLow ? 'fail_low' : 'fail_high', pass: false };
+}
+
+// ── Parse stored compartment JSON ────────────────────────
+function parseCompVals(resultValue) {
+  if (!resultValue) return null;
+  try {
+    const parsed = JSON.parse(resultValue);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed;
+  } catch {}
+  return null; // plain string — not compartment format
+}
+
 const STATUS_ROW = {
   pass     : { bg: '#DCFCE7', color: GR,        label: 'PASS'   },
   fail_low : { bg: '#FEF2F2', color: RD,        label: 'FAIL ↓' },
@@ -51,6 +81,58 @@ const STATUS_ROW = {
   text_ok  : { bg: '#EFF6FF', color: '#1D4ED8', label: 'OK'     },
 };
 
+// ── Compartment input row ─────────────────────────────────
+function CompartmentInput({ aId, compVals, numComp, spec, onChange, disabled }) {
+  const inputs = Array.from({ length: numComp }, (_, i) => `C${i+1}`);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+      <div style={{ display:'flex', gap:'4px', flexWrap:'wrap' }}>
+        {inputs.map(cKey => {
+          const val  = compVals?.[cKey] ?? '';
+          const num  = parseFloat(val);
+          let pass   = null;
+          if (val.trim() && !isNaN(num)) {
+            if (spec?.min_value != null && num < parseFloat(spec.min_value)) pass = false;
+            else if (spec?.max_value != null && num > parseFloat(spec.max_value)) pass = false;
+            else pass = true;
+          }
+          return (
+            <div key={cKey} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'2px' }}>
+              <span style={{ fontSize:'9px', fontWeight:'700', color:'#6B7280' }}>{cKey}</span>
+              <input
+                type="number"
+                value={val}
+                disabled={disabled}
+                onChange={e => onChange(aId, cKey, e.target.value)}
+                placeholder="—"
+                style={{
+                  width       : '58px',
+                  border      : `1.5px solid ${disabled?'#E2E8F0':pass===null?'#E2E8F0':pass?'#86EFAC':'#FECACA'}`,
+                  borderRadius: '6px',
+                  padding     : '5px 4px',
+                  fontSize    : '12px',
+                  fontFamily  : 'inherit',
+                  background  : disabled?'#F8FAFC':pass===null?'#fff':pass?'#F0FDF4':'#FFF5F5',
+                  outline     : 'none',
+                  textAlign   : 'center',
+                  cursor      : disabled ? 'not-allowed' : 'text',
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      {spec?.display_spec && (
+        <div style={{ fontSize:'9px', color:'#D97706', fontWeight:'600' }}>
+          Spec: {spec.display_spec}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 export default function AnalysisPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
@@ -66,13 +148,31 @@ export default function AnalysisPage() {
   const [analyst,       setAnalyst]       = useState(signingAs || user?.full_name || '');
   const [manualAnalyst, setManualAnalyst] = useState(false);
   const [staff,         setStaff]         = useState([]);
+  // Standard mode
   const [vals,          setVals]          = useState({});
+  // Compartment mode
+  const [compVals,      setCompVals]      = useState({});
+  const [numComp,       setNumComp]       = useState(4);
+  // Submission state
   const [subs,          setSubs]          = useState({});
   const [saving,        setSaving]        = useState({});
   const [savingAll,     setSavingAll]     = useState(false);
   const [showEdit,      setShowEdit]      = useState(false);
   const [removing,      setRemoving]      = useState(null);
   const inputRefs = useRef({});
+
+  // ── Detect if sample uses compartment mode ────────────────
+  const isCompartmentMode = COMPARTMENT_TYPE_CODES.includes(
+    sample?.sample_types?.code || ''
+  );
+
+  // ── Update a single compartment value ────────────────────
+  const setComp = (aId, cKey, val) => {
+    setCompVals(prev => ({
+      ...prev,
+      [aId]: { ...(prev[aId] || {}), [cKey]: val },
+    }));
+  };
 
   // ── Load sample ───────────────────────────────────────────
   const loadSample = useCallback(async () => {
@@ -102,6 +202,7 @@ export default function AnalysisPage() {
       setSample(data);
 
       const assignments = data?.sample_test_assignments || [];
+      const isCompMode  = COMPARTMENT_TYPE_CODES.includes(data?.sample_types?.code || '');
 
       if (assignments.length === 0) {
         // Step 1 — load available tests
@@ -121,11 +222,19 @@ export default function AnalysisPage() {
         }
         setStep('confirm');
       } else {
-        // Step 2 — populate submitted results
-        const iv = {}; const is_ = {};
+        // Step 2 — populate existing results
+        const iv = {}; const ic = {}; const is_ = {};
         for (const a of assignments) {
           if (a.result_value) {
-            iv[a.id]  = a.result_value;
+            const parsed = isCompMode ? parseCompVals(a.result_value) : null;
+            if (parsed) {
+              ic[a.id]  = parsed;
+              // Detect max compartment from stored keys
+              const nums = Object.keys(parsed).map(k => parseInt(k.replace('C',''),10)).filter(n=>!isNaN(n));
+              if (nums.length > 0) setNumComp(prev => Math.max(prev, Math.max(...nums)));
+            } else {
+              iv[a.id] = a.result_value;
+            }
             is_[a.id] = {
               value    : a.result_value,
               status   : a.result_status,
@@ -137,6 +246,7 @@ export default function AnalysisPage() {
           }
         }
         setVals(iv);
+        setCompVals(ic);
         setSubs(is_);
         setStep('enter');
       }
@@ -157,17 +267,15 @@ export default function AnalysisPage() {
       .catch(e => console.error('Staff load:', e.message));
   }, []);
 
-  // ── Confirm tests (Step 1 → 2) via backend to avoid RLS ──
+  // ── Confirm tests (Step 1 → 2) ───────────────────────────
   const confirmTests = async () => {
     if (selectedIds.length === 0) { toast.warning('Select at least one test'); return; }
     setConfirming(true);
     try {
-      // Use backend API — bypasses Supabase RLS restriction
       await api.post(`/samples/${id}/assign-tests`, { test_ids: selectedIds });
       toast.success(`✅ ${selectedIds.length} test${selectedIds.length !== 1 ? 's' : ''} confirmed`);
       await loadSample();
     } catch(e) {
-      // Fallback: try direct Supabase insert
       try {
         const { error } = await supabase
           .from('sample_test_assignments')
@@ -187,17 +295,37 @@ export default function AnalysisPage() {
   const assignments = [...(sample?.sample_test_assignments || [])]
     .sort((a, b) => (a.tests?.display_order || 0) - (b.tests?.display_order || 0));
 
+  // ── Build result value for a single assignment ────────────
+  const buildResultValue = (a) => {
+    if (isCompartmentMode) {
+      const cv = compVals[a.id] || {};
+      // At least one compartment must have a value
+      const hasAny = Object.values(cv).some(v => v?.trim());
+      if (!hasAny) return null;
+      return JSON.stringify(cv);
+    }
+    return vals[a.id]?.trim() || null;
+  };
+
   // ── Submit one result ─────────────────────────────────────
   const submitOne = async (a) => {
     if (!analyst.trim()) { toast.warning('Select analyst first'); return; }
-    const v = vals[a.id]?.trim();
-    if (!v) { toast.warning('Enter a value'); return; }
+    const resultValue = buildResultValue(a);
+    if (!resultValue) { toast.warning('Enter at least one value'); return; }
+
     const spec = a.tests?.test_specifications?.[0];
-    const { status } = evaluate(v, spec, a.tests?.result_type);
+    let status;
+    if (isCompartmentMode) {
+      const cv = compVals[a.id] || {};
+      status = evaluateCompartments(cv, spec).status || 'pass';
+    } else {
+      status = evaluate(resultValue, spec, a.tests?.result_type).status || 'pass';
+    }
+
     setSaving(p => ({ ...p, [a.id]: true }));
     try {
       await api.put(`/results/${a.id}`, {
-        result_value     : v,
+        result_value     : resultValue,
         analyst_signature: analyst.trim(),
         result_status    : status,
         submitted_at     : new Date().toISOString(),
@@ -205,10 +333,12 @@ export default function AnalysisPage() {
       setSubs(p => ({
         ...p,
         [a.id]: {
-          value: v, status, analyst: analyst.trim(),
-          time: new Date().toISOString(),
+          value    : resultValue,
+          status,
+          analyst  : analyst.trim(),
+          time     : new Date().toISOString(),
           editCount: (p[a.id]?.editCount || 0) + 1,
-          locked: ((p[a.id]?.editCount || 0) + 1) >= 2,
+          locked   : ((p[a.id]?.editCount || 0) + 1) >= 2,
         },
       }));
       await loadSample();
@@ -219,18 +349,28 @@ export default function AnalysisPage() {
   // ── Submit all results ────────────────────────────────────
   const submitAll = async () => {
     if (!analyst.trim()) { toast.warning('Select analyst first'); return; }
-    const toSub = assignments.filter(a => vals[a.id]?.trim() && !subs[a.id]?.locked);
+    const toSub = assignments.filter(a => {
+      if (subs[a.id]?.locked) return false;
+      return buildResultValue(a) !== null;
+    });
     if (!toSub.length) { toast.warning('No values to submit'); return; }
     setSavingAll(true);
     let ok = 0; let oos = 0;
     try {
       for (const a of toSub) {
-        const v = vals[a.id].trim();
+        const resultValue = buildResultValue(a);
+        if (!resultValue) continue;
         const spec = a.tests?.test_specifications?.[0];
-        const { status } = evaluate(v, spec, a.tests?.result_type);
+        let status;
+        if (isCompartmentMode) {
+          const cv = compVals[a.id] || {};
+          status = evaluateCompartments(cv, spec).status || 'pass';
+        } else {
+          status = evaluate(resultValue, spec, a.tests?.result_type).status || 'pass';
+        }
         try {
           await api.put(`/results/${a.id}`, {
-            result_value     : v,
+            result_value     : resultValue,
             analyst_signature: analyst.trim(),
             result_status    : status,
             submitted_at     : new Date().toISOString(),
@@ -238,10 +378,11 @@ export default function AnalysisPage() {
           setSubs(p => ({
             ...p,
             [a.id]: {
-              value: v, status, analyst: analyst.trim(),
-              time: new Date().toISOString(),
+              value    : resultValue, status,
+              analyst  : analyst.trim(),
+              time     : new Date().toISOString(),
               editCount: (p[a.id]?.editCount || 0) + 1,
-              locked: ((p[a.id]?.editCount || 0) + 1) >= 2,
+              locked   : ((p[a.id]?.editCount || 0) + 1) >= 2,
             },
           }));
           if (status === 'fail_low' || status === 'fail_high') oos++; else ok++;
@@ -267,13 +408,20 @@ export default function AnalysisPage() {
   };
 
   // ── Derived values ────────────────────────────────────────
-  const totalN  = assignments.length;
-  const subN    = Object.keys(subs).length;
-  const oosN    = Object.values(subs).filter(s => s.status === 'fail_low' || s.status === 'fail_high').length;
-  const filledN = assignments.filter(a => vals[a.id]?.trim() && !subs[a.id]?.value).length;
+  const totalN = assignments.length;
+  const subN   = Object.keys(subs).length;
+  const oosN   = Object.values(subs).filter(s => s.status === 'fail_low' || s.status === 'fail_high').length;
+  const filledN = assignments.filter(a => {
+    if (subs[a.id]?.value) return false;
+    if (isCompartmentMode) return Object.values(compVals[a.id] || {}).some(v => v?.trim());
+    return vals[a.id]?.trim();
+  }).length;
   const allDone = totalN > 0 && subN === totalN;
   const pct     = totalN > 0 ? Math.round((subN / totalN) * 100) : 0;
-  const canAll  = analyst.trim() && assignments.some(a => vals[a.id]?.trim() && !subs[a.id]?.locked);
+  const canAll  = analyst.trim() && assignments.some(a => {
+    if (subs[a.id]?.locked) return false;
+    return buildResultValue(a) !== null;
+  });
 
   const sttCfg = ({
     pending    : { color: '#64748B', bg: '#F1F5F9', label: 'Pending'     },
@@ -282,169 +430,172 @@ export default function AnalysisPage() {
     voided     : { color: RD,        bg: '#FEF2F2', label: 'Voided'      },
   }[sample?.status]) || { color: '#64748B', bg: '#F1F5F9', label: '—' };
 
-  // ── Loading ───────────────────────────────────────────────
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight:'100vh', background:'#F8FAFC', display:'flex', flexDirection:'column' }}>
       <Navbar />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontWeight: '600', fontSize: '15px' }}>
+      <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontWeight:'600', fontSize:'15px' }}>
         Loading sample...
       </div>
     </div>
   );
 
   return (
-    <div style={{ height: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ height:'100vh', background:'#F8FAFC', display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <Navbar />
 
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '300px 1fr', overflow: 'hidden' }}>
+      <div style={{ flex:1, display:'grid', gridTemplateColumns:'300px 1fr', overflow:'hidden' }}>
 
-        {/* ════════════════════════════════════════════════════
-            LEFT PANEL — inlined directly (not a sub-component)
-            to prevent dropdown closing on re-render
-        ════════════════════════════════════════════════════ */}
-        <div style={{ background: '#fff', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-          {/* Back */}
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
+        {/* ════ LEFT PANEL ════ */}
+        <div style={{ background:'#fff', borderRight:'1px solid #E2E8F0', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div style={{ padding:'10px 14px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
             <button onClick={() => navigate(-1)}
-              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', border: '1px solid #E2E8F0', borderRadius: '7px', background: '#F8FAFC', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'5px 10px', border:'1px solid #E2E8F0', borderRadius:'7px', background:'#F8FAFC', color:'#475569', fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
               ← Back
             </button>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-
-            {/* Sample name & number */}
-            <h2 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: '900', color: '#0F172A' }}>
+          <div style={{ flex:1, overflowY:'auto', padding:'14px' }}>
+            <h2 style={{ margin:'0 0 3px', fontSize:'17px', fontWeight:'900', color:'#0F172A' }}>
               {sample?.sample_name}
             </h2>
-            <div style={{ fontFamily: 'monospace', fontSize: '12px', fontWeight: '700', color: PM, marginBottom: '8px' }}>
+            <div style={{ fontFamily:'monospace', fontSize:'12px', fontWeight:'700', color:PM, marginBottom:'8px' }}>
               {sample?.sample_number}
             </div>
 
-            {/* Badges */}
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
-              <span style={{ background: sttCfg.bg, color: sttCfg.color, padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+            {/* Compartment mode badge */}
+            {isCompartmentMode && (
+              <div style={{ background:'#FFF7ED', border:'1px solid #FED7AA', borderRadius:'8px', padding:'7px 11px', marginBottom:'10px', fontSize:'11px', color:'#92400E' }}>
+                🧪 <strong>Compartment Mode</strong> — enter values per compartment for each test
+              </div>
+            )}
+
+            {/* Status badges */}
+            <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'12px' }}>
+              <span style={{ background:sttCfg.bg, color:sttCfg.color, padding:'2px 9px', borderRadius:'20px', fontSize:'11px', fontWeight:'700' }}>
                 {sttCfg.label}
               </span>
               {sample?.sample_types?.name && (
-                <span style={{ background: PL, color: P, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
+                <span style={{ background:PL, color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
                   {sample.sample_types.name}
                 </span>
               )}
               {sample?.departments?.name && (
-                <span style={{ background: '#ECFDF5', color: GR, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
+                <span style={{ background:'#ECFDF5', color:GR, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
                   {sample.departments.name}
                 </span>
               )}
               {oosN > 0 && (
-                <span style={{ background: '#FEF2F2', color: RD, padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '800', border: '1px solid #FECACA' }}>
+                <span style={{ background:'#FEF2F2', color:RD, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'800', border:'1px solid #FECACA' }}>
                   ⚠️ {oosN} OOS
                 </span>
               )}
             </div>
 
-            {/* Progress bar — step 2 only */}
+            {/* Progress — step 2 only */}
             {step === 'enter' && (
-              <div style={{ background: '#F8FAFC', borderRadius: '9px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #E2E8F0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '5px' }}>
+              <div style={{ background:'#F8FAFC', borderRadius:'9px', padding:'10px 12px', marginBottom:'12px', border:'1px solid #E2E8F0' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', fontWeight:'700', color:'#475569', marginBottom:'5px' }}>
                   <span>Progress</span>
-                  <span style={{ color: allDone ? GR : PM }}>{subN}/{totalN} ({pct}%)</span>
+                  <span style={{ color:allDone?GR:PM }}>{subN}/{totalN} ({pct}%)</span>
                 </div>
-                <div style={{ background: '#E2E8F0', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: allDone ? GR : oosN > 0 ? RD : `linear-gradient(90deg,${P},${PM})`, borderRadius: '4px', transition: 'width 0.3s' }} />
+                <div style={{ background:'#E2E8F0', borderRadius:'4px', height:'6px', overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${pct}%`, background:allDone?GR:oosN>0?RD:`linear-gradient(90deg,${P},${PM})`, borderRadius:'4px', transition:'width 0.3s' }}/>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
-                  <span style={{ color: GR, fontWeight: '600' }}>✅ {subN} submitted</span>
-                  {filledN > 0 && <span style={{ color: '#D97706', fontWeight: '600' }}>✏️ {filledN} filled</span>}
-                  {oosN > 0 && <span style={{ color: RD, fontWeight: '700' }}>⚠️ {oosN} OOS</span>}
+                <div style={{ display:'flex', gap:'10px', marginTop:'6px', fontSize:'11px', flexWrap:'wrap' }}>
+                  <span style={{ color:GR, fontWeight:'600' }}>✅ {subN} submitted</span>
+                  {filledN > 0 && <span style={{ color:'#D97706', fontWeight:'600' }}>✏️ {filledN} filled</span>}
+                  {oosN > 0 && <span style={{ color:RD, fontWeight:'700' }}>⚠️ {oosN} OOS</span>}
                 </div>
               </div>
             )}
 
-            {/* Meta info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', marginBottom: '12px' }}>
+            {/* Meta */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'5px', marginBottom:'12px' }}>
               {[
-                ['Date',    sample?.registered_at ? format(new Date(sample.registered_at), 'dd/MM/yy HH:mm') : '—'],
+                ['Date',    sample?.registered_at ? format(new Date(sample.registered_at),'dd/MM/yy HH:mm'):'—'],
                 ['Sampler', sample?.sampler_name || '—'],
                 ['Batch',   sample?.batch_number || '—'],
                 ['Notes',   sample?.notes        || '—'],
-              ].map(([k, v]) => (
-                <div key={k} style={{ background: '#F8FAFC', borderRadius: '6px', padding: '6px 9px', border: '1px solid #F1F5F9' }}>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1px' }}>{k}</div>
-                  <div style={{ fontWeight: '600', color: '#1E293B', fontSize: '11px', wordBreak: 'break-word' }}>{v}</div>
+              ].map(([k,v]) => (
+                <div key={k} style={{ background:'#F8FAFC', borderRadius:'6px', padding:'6px 9px', border:'1px solid #F1F5F9' }}>
+                  <div style={{ fontSize:'9px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'1px' }}>{k}</div>
+                  <div style={{ fontWeight:'600', color:'#1E293B', fontSize:'11px', wordBreak:'break-word' }}>{v}</div>
                 </div>
               ))}
             </div>
 
-            {/* Correct sample button */}
+            {/* Correct sample */}
             <button onClick={() => setShowEdit(true)}
-              style={{ width: '100%', padding: '8px', background: '#FFF7ED', color: '#D97706', border: '1px solid #FED7AA', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '12px' }}>
+              style={{ width:'100%', padding:'8px', background:'#FFF7ED', color:'#D97706', border:'1px solid #FED7AA', borderRadius:'8px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', marginBottom:'12px' }}>
               ✏️ Correct This Sample
             </button>
 
+            {/* ── Compartment count selector ── */}
+            {step === 'enter' && isCompartmentMode && (
+              <div style={{ marginBottom:'12px', background:'#F5F3FF', borderRadius:'8px', padding:'10px 12px', border:`1px solid ${PL}` }}>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'6px' }}>
+                  NUMBER OF COMPARTMENTS
+                </label>
+                <div style={{ display:'flex', gap:'5px', flexWrap:'wrap' }}>
+                  {[2,3,4,5,6,8,10].map(n => (
+                    <button key={n} type="button" onClick={() => setNumComp(n)}
+                      style={{ padding:'5px 11px', border:`1.5px solid ${numComp===n?PM:PL}`, borderRadius:'7px', background:numComp===n?PM:'#fff', color:numComp===n?'#fff':PM, fontWeight:'700', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'5px' }}>
+                  C1 – C{numComp} columns will appear per test
+                </div>
+              </div>
+            )}
+
             {/* ── Analyst selector ── */}
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#4C1D95', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.4px' }}>
                 Analyst Signature *
               </label>
-
               {!manualAnalyst ? (
                 <>
-                  <select
-                    value={analyst}
-                    onChange={e => setAnalyst(e.target.value)}
-                    style={{ width: '100%', border: '1.5px solid #E2E8F0', borderRadius: '8px', padding: '9px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: analyst ? '#1E293B' : '#94A3B8', outline: 'none', cursor: 'pointer', marginBottom: '6px', boxSizing: 'border-box', appearance: 'auto' }}>
+                  <select value={analyst} onChange={e => setAnalyst(e.target.value)}
+                    style={{ width:'100%', border:'1.5px solid #E2E8F0', borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none', cursor:'pointer', marginBottom:'5px', boxSizing:'border-box' }}>
                     <option value="">— Select analyst —</option>
-                    {staff.map(s => (
-                      <option key={s.id} value={s.full_name}>{s.full_name}</option>
-                    ))}
+                    {staff.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
-                    style={{ background: 'none', border: 'none', color: PM, fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
+                  <button type="button" onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
+                    style={{ background:'none', border:'none', color:PM, fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline', padding:0 }}>
                     + Not in list? Type name manually
                   </button>
                 </>
               ) : (
                 <>
-                  <input
-                    type="text"
-                    value={analyst}
-                    onChange={e => setAnalyst(e.target.value)}
-                    autoFocus
-                    placeholder="Type analyst full name..."
-                    style={{ width: '100%', border: `1.5px solid ${PM}`, borderRadius: '8px', padding: '9px 11px', fontSize: '13px', fontFamily: 'inherit', background: '#fff', color: '#1E293B', outline: 'none', boxSizing: 'border-box', marginBottom: '6px' }}
+                  <input type="text" value={analyst} onChange={e => setAnalyst(e.target.value)}
+                    autoFocus placeholder="Type analyst full name..."
+                    style={{ width:'100%', border:`1.5px solid ${PM}`, borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none', boxSizing:'border-box', marginBottom:'5px' }}
                   />
                   {analyst.trim().length > 1 && (
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={async () => {
                         try {
-                          const res = await api.post('/lookup/staff', { full_name: analyst.trim(), role: 'Both' });
+                          const res = await api.post('/lookup/staff', { full_name:analyst.trim(), role:'Both' });
                           const saved = res.data?.staff;
                           if (saved) {
                             setStaff(prev => {
                               const exists = prev.find(s => s.full_name === saved.full_name);
                               if (exists) return prev;
-                              return [...prev, saved].sort((a, b) => a.full_name.localeCompare(b.full_name));
+                              return [...prev, saved].sort((a,b) => a.full_name.localeCompare(b.full_name));
                             });
                           }
                           setManualAnalyst(false);
                           toast.success(`✅ ${analyst.trim()} saved to analyst list`);
-                        } catch(e) {
-                          toast.error('Failed to save: ' + (e.response?.data?.error || e.message));
-                        }
+                        } catch(e) { toast.error('Failed to save: '+(e.response?.data?.error||e.message)); }
                       }}
-                      style={{ width: '100%', padding: '8px', background: `linear-gradient(135deg,${P},${PM})`, color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginBottom: '5px' }}>
+                      style={{ width:'100%', padding:'8px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', marginBottom:'5px' }}>
                       💾 Save "{analyst.trim()}" to analyst list
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
-                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
+                  <button type="button" onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
+                    style={{ background:'none', border:'none', color:'#94A3B8', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline', padding:0 }}>
                     ← Back to dropdown without saving
                   </button>
                 </>
@@ -452,17 +603,15 @@ export default function AnalysisPage() {
             </div>
           </div>
 
-          {/* Submit All button — Step 2 only */}
+          {/* Submit All — step 2 only */}
           {step === 'enter' && (
-            <div style={{ padding: '10px 14px', borderTop: '1px solid #E2E8F0', background: '#FAFBFC', flexShrink: 0 }}>
-              <button
-                onClick={submitAll}
-                disabled={savingAll || !canAll}
-                style={{ width: '100%', padding: '11px', background: canAll ? 'linear-gradient(135deg,#0D9488,#059669)' : '#CBD5E1', color: '#fff', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: '800', cursor: canAll ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s' }}>
+            <div style={{ padding:'10px 14px', borderTop:'1px solid #E2E8F0', background:'#FAFBFC', flexShrink:0 }}>
+              <button onClick={submitAll} disabled={savingAll || !canAll}
+                style={{ width:'100%', padding:'11px', background:canAll?'linear-gradient(135deg,#0D9488,#059669)':'#CBD5E1', color:'#fff', border:'none', borderRadius:'9px', fontSize:'14px', fontWeight:'800', cursor:canAll?'pointer':'not-allowed', fontFamily:'inherit', transition:'all 0.2s' }}>
                 {savingAll ? '⏳ Saving...' : '✅ Submit All Results'}
               </button>
               {!analyst.trim() && (
-                <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center', margin: '5px 0 0' }}>
+                <p style={{ fontSize:'11px', color:'#94A3B8', textAlign:'center', margin:'5px 0 0' }}>
                   Select analyst above first
                 </p>
               )}
@@ -470,83 +619,74 @@ export default function AnalysisPage() {
           )}
         </div>
 
-        {/* ════════════════════════════════════════════════════
-            STEP 1 — Select tests to perform
-        ════════════════════════════════════════════════════ */}
+        {/* ════ STEP 1 — Select tests ════ */}
         {step === 'confirm' && (
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-            <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ background:'#fff', borderBottom:'1px solid #E2E8F0', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>
+                <h3 style={{ margin:0, fontSize:'15px', fontWeight:'800', color:'#0F172A' }}>
                   Step 1 — Select Tests to Perform
                 </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94A3B8' }}>
+                <p style={{ margin:'2px 0 0', fontSize:'12px', color:'#94A3B8' }}>
                   Tick the tests you will perform then click Confirm
+                  {isCompartmentMode && ' · Compartment values (C1–C4+) will be entered in Step 2'}
                 </p>
               </div>
-              <span style={{ background: PL, color: P, padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700' }}>
+              <span style={{ background:PL, color:P, padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700' }}>
                 {selectedIds.length} / {allTests.length} selected
               </span>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+            <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
               {allTests.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>⚠️</div>
-                  <div style={{ fontWeight: '700', fontSize: '15px', color: '#374151' }}>No tests configured</div>
-                  <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '6px' }}>
+                <div style={{ textAlign:'center', padding:'60px 20px' }}>
+                  <div style={{ fontSize:'48px', marginBottom:'12px' }}>⚠️</div>
+                  <div style={{ fontWeight:'700', fontSize:'15px', color:'#374151' }}>No tests configured</div>
+                  <div style={{ fontSize:'12px', color:'#94A3B8', marginTop:'6px' }}>
                     No tests found for "{sample?.sample_types?.name}". Contact your admin.
                   </div>
                 </div>
               ) : (
                 <>
-                  {/* Select All toggle */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#F5F3FF', borderRadius: '9px', marginBottom: '10px', border: `1px solid ${PL}` }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#4C1D95' }}>
-                      {selectedIds.length} of {allTests.length} tests selected
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 14px', background:'#F5F3FF', borderRadius:'9px', marginBottom:'10px', border:`1px solid ${PL}` }}>
+                    <span style={{ fontSize:'12px', fontWeight:'700', color:'#4C1D95' }}>
+                      {selectedIds.length} of {allTests.length} selected
                     </span>
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => setSelectedIds(
                         selectedIds.length === allTests.length ? [] : allTests.map(t => t.id)
                       )}
-                      style={{ padding: '5px 14px', background: PM, color: '#fff', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ padding:'5px 14px', background:PM, color:'#fff', border:'none', borderRadius:'7px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
                       {selectedIds.length === allTests.length ? 'Deselect All' : 'Select All'}
                     </button>
                   </div>
 
-                  {/* Test checkboxes */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
                     {allTests.map(test => {
                       const spec    = test.test_specifications?.[0];
                       const checked = selectedIds.includes(test.id);
                       return (
                         <label key={test.id}
-                          style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: checked ? '#F5F3FF' : '#fff', border: `1.5px solid ${checked ? PM : '#E2E8F0'}`, borderRadius: '10px', cursor: 'pointer', transition: 'all 0.12s', userSelect: 'none' }}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
+                          style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background:checked?'#F5F3FF':'#fff', border:`1.5px solid ${checked?PM:'#E2E8F0'}`, borderRadius:'10px', cursor:'pointer', userSelect:'none' }}>
+                          <input type="checkbox" checked={checked}
                             onChange={() => setSelectedIds(prev =>
-                              prev.includes(test.id)
-                                ? prev.filter(x => x !== test.id)
-                                : [...prev, test.id]
+                              prev.includes(test.id) ? prev.filter(x=>x!==test.id) : [...prev,test.id]
                             )}
-                            style={{ width: '17px', height: '17px', accentColor: PM, flexShrink: 0, cursor: 'pointer' }}
+                            style={{ width:'17px', height:'17px', accentColor:PM, flexShrink:0, cursor:'pointer' }}
                           />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '700', fontSize: '14px', color: '#0F172A' }}>
-                              {test.name}
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:'700', fontSize:'14px', color:'#0F172A' }}>{test.name}</div>
+                            <div style={{ fontSize:'11px', color:'#94A3B8', marginTop:'2px', display:'flex', gap:'12px', flexWrap:'wrap' }}>
                               {spec?.display_spec && (
-                                <span style={{ color: '#D97706', fontWeight: '600' }}>Spec: {spec.display_spec}</span>
+                                <span style={{ color:'#D97706', fontWeight:'600' }}>Spec: {spec.display_spec}</span>
                               )}
                               {test.unit && <span>Unit: {test.unit}</span>}
-                              <span style={{ color: '#CBD5E1' }}>{test.result_type}</span>
+                              {isCompartmentMode && ['BLR_PET_CV','BLR_DSL_CV','BLR_FO_CV','BLR_DSL_BD','BLR_FO_BD'].includes(test.code||'') && (
+                                <span style={{ color:PM, fontWeight:'600' }}>📊 Compartment values</span>
+                              )}
                             </div>
                           </div>
-                          {checked && <span style={{ color: GR, fontSize: '16px', flexShrink: 0 }}>✓</span>}
+                          {checked && <span style={{ color:GR, fontSize:'16px', flexShrink:0 }}>✓</span>}
                         </label>
                       );
                     })}
@@ -555,171 +695,240 @@ export default function AnalysisPage() {
               )}
             </div>
 
-            {/* Confirm button */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #E2E8F0', background: '#fff', flexShrink: 0 }}>
-              <button
-                onClick={confirmTests}
-                disabled={selectedIds.length === 0 || confirming}
-                style={{ width: '100%', padding: '13px', background: selectedIds.length === 0 ? '#CBD5E1' : `linear-gradient(135deg,${P},${PM})`, color: '#fff', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '800', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: selectedIds.length > 0 ? `0 2px 8px rgba(107,33,168,0.3)` : 'none', transition: 'all 0.2s' }}>
-                {confirming
-                  ? '⏳ Confirming...'
-                  : `✅ Confirm ${selectedIds.length} Test${selectedIds.length !== 1 ? 's' : ''} — Proceed to Results Entry`}
+            <div style={{ padding:'12px 20px', borderTop:'1px solid #E2E8F0', background:'#fff', flexShrink:0 }}>
+              <button onClick={confirmTests} disabled={selectedIds.length===0||confirming}
+                style={{ width:'100%', padding:'13px', background:selectedIds.length===0?'#CBD5E1':`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'800', cursor:selectedIds.length===0?'not-allowed':'pointer', fontFamily:'inherit', transition:'all 0.2s' }}>
+                {confirming ? '⏳ Confirming...' : `✅ Confirm ${selectedIds.length} Test${selectedIds.length!==1?'s':''} — Proceed to Results Entry`}
               </button>
             </div>
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════
-            STEP 2 — Enter results
-        ════════════════════════════════════════════════════ */}
+        {/* ════ STEP 2 — Enter results ════ */}
         {step === 'enter' && (
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-            <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ background:'#fff', borderBottom:'1px solid #E2E8F0', padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>
+                <h3 style={{ margin:0, fontSize:'14px', fontWeight:'800', color:'#0F172A' }}>
                   Step 2 — Results Entry
+                  {isCompartmentMode && ` · Compartment Mode (C1–C${numComp})`}
                 </h3>
-                <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8', marginTop: '1px' }}>
-                  {totalN} tests · max 2 updates per result then locked · press Enter to submit
+                <p style={{ margin:0, fontSize:'11px', color:'#94A3B8', marginTop:'1px' }}>
+                  {totalN} tests · max 2 updates per result then locked
+                  {!isCompartmentMode && ' · press Enter to submit'}
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
                 {allDone && (
-                  <span style={{ background: '#ECFDF5', color: GR, padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', border: '1px solid #A7F3D0' }}>
+                  <span style={{ background:'#ECFDF5', color:GR, padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', border:'1px solid #A7F3D0' }}>
                     ✅ All Complete
                   </span>
                 )}
-                <button
-                  onClick={async () => {
-                    const hasResults = Object.keys(subs).length > 0;
-                    if (hasResults) { toast.warning('Cannot change tests — results already submitted'); return; }
-                    try {
-                      await supabase.from('sample_test_assignments').delete().eq('sample_id', id);
-                      await loadSample();
-                      setStep('confirm');
-                    } catch(e) { toast.error('Failed to reset: ' + e.message); }
-                  }}
-                  style={{ padding: '5px 12px', background: '#F5F3FF', color: P, border: `1px solid ${PL}`, borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={async () => {
+                  const hasResults = Object.keys(subs).length > 0;
+                  if (hasResults) { toast.warning('Cannot change tests — results already submitted'); return; }
+                  try {
+                    await supabase.from('sample_test_assignments').delete().eq('sample_id', id);
+                    await loadSample(); setStep('confirm');
+                  } catch(e) { toast.error('Failed to reset: '+e.message); }
+                }}
+                  style={{ padding:'5px 12px', background:'#F5F3FF', color:P, border:`1px solid ${PL}`, borderRadius:'7px', fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
                   ← Change Tests
                 </button>
               </div>
             </div>
 
             {/* Results table */}
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <div style={{ flex:1, overflowY:'auto', overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', minWidth: isCompartmentMode ? `${600 + numComp*70}px` : '600px' }}>
                 <thead>
                   <tr>
-                    {[
-                      ['Test',   '170px'],
-                      ['Spec',   '110px'],
-                      ['Unit',    '65px'],
-                      ['Value',    'auto'],
-                      ['Status',  '85px'],
-                      ['Analyst','110px'],
-                      ['Time',    '72px'],
-                      ['',        '80px'],
-                    ].map(([h, w]) => (
-                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, width: w }}>
-                        {h}
-                      </th>
-                    ))}
+                    <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'150px' }}>Test</th>
+                    <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'100px' }}>Spec</th>
+                    <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'60px' }}>Unit</th>
+
+                    {isCompartmentMode ? (
+                      // Compartment columns
+                      <>
+                        {Array.from({ length: numComp }, (_, i) => (
+                          <th key={`C${i+1}`} style={{ padding:'8px 10px', textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#fff', background:PM, borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'70px' }}>
+                            C{i+1}
+                          </th>
+                        ))}
+                      </>
+                    ) : (
+                      <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', position:'sticky', top:0, zIndex:10, minWidth:'160px' }}>Value</th>
+                    )}
+
+                    <th style={{ padding:'8px 12px', textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'80px' }}>Status</th>
+                    <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'100px' }}>Analyst</th>
+                    <th style={{ padding:'8px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0, zIndex:10, minWidth:'60px' }}>Time</th>
+                    <th style={{ padding:'8px 10px', textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', position:'sticky', top:0, zIndex:10, minWidth:'100px' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {assignments.map((a, i) => {
                     const spec    = a.tests?.test_specifications?.[0];
                     const sub     = subs[a.id];
-                    const val     = vals[a.id] || '';
                     const locked  = sub?.locked;
                     const isText  = a.tests?.result_type === 'text';
-                    const isExtra = ['Remarks', 'Action'].includes(a.tests?.name);
-                    const live    = val.trim() ? evaluate(val, spec, a.tests?.result_type) : null;
-                    const badge   = STATUS_ROW[sub?.status] || null;
+                    const isExtra = ['Remarks','Action'].includes(a.tests?.name);
                     const isOOS   = sub?.status === 'fail_low' || sub?.status === 'fail_high';
-                    const rowBg   = isOOS ? '#FFF5F5' : i % 2 === 0 ? '#fff' : '#FAFBFC';
+                    const rowBg   = isOOS ? '#FFF5F5' : i%2===0 ? '#fff' : '#FAFBFC';
+                    const badge   = STATUS_ROW[sub?.status] || null;
+
+                    // For compartment mode: parse stored JSON for display
+                    const storedComp = sub?.value ? parseCompVals(sub.value) : null;
+
+                    // Live status for compartment mode
+                    let liveCompStatus = null;
+                    if (isCompartmentMode && !isExtra) {
+                      const cv = compVals[a.id] || {};
+                      const hasAny = Object.values(cv).some(v => v?.trim());
+                      if (hasAny) liveCompStatus = evaluateCompartments(cv, spec);
+                    }
 
                     return (
-                      <tr key={a.id} style={{ background: rowBg }}
-                        onMouseEnter={e => { if (!isOOS) e.currentTarget.style.background = '#F5F3FF'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}>
+                      <tr key={a.id} style={{ background:rowBg }}
+                        onMouseEnter={e=>{ if(!isOOS) e.currentTarget.style.background='#F5F3FF'; }}
+                        onMouseLeave={e=>{ e.currentTarget.style.background=rowBg; }}>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', borderLeft: isOOS ? `3px solid ${RD}` : '3px solid transparent' }}>
-                          <div style={{ fontWeight: isExtra ? '500' : '700', color: isExtra ? '#94A3B8' : '#0F172A', fontSize: '13px' }}>
+                        {/* Test name */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9', borderLeft:isOOS?`3px solid ${RD}`:'3px solid transparent' }}>
+                          <div style={{ fontWeight:isExtra?'500':'700', color:isExtra?'#94A3B8':'#0F172A', fontSize:'13px' }}>
                             {a.tests?.name}
                           </div>
-                          {locked && <div style={{ fontSize: '10px', color: '#94A3B8' }}>🔒 Locked</div>}
+                          {locked && <div style={{ fontSize:'10px', color:'#94A3B8' }}>🔒 Locked</div>}
                         </td>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9' }}>
+                        {/* Spec */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9' }}>
                           {!isExtra && spec?.display_spec
-                            ? <span style={{ fontSize: '12px', color: G, fontWeight: '700', background: '#FFFBEB', padding: '2px 7px', borderRadius: '5px' }}>{spec.display_spec}</span>
-                            : <span style={{ color: '#CBD5E1', fontSize: '12px' }}>—</span>}
+                            ? <span style={{ fontSize:'12px', color:G, fontWeight:'700', background:'#FFFBEB', padding:'2px 7px', borderRadius:'5px' }}>{spec.display_spec}</span>
+                            : <span style={{ color:'#CBD5E1', fontSize:'12px' }}>—</span>}
                         </td>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#94A3B8', fontSize: '12px' }}>
+                        {/* Unit */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9', color:'#94A3B8', fontSize:'12px' }}>
                           {a.tests?.unit || '—'}
                         </td>
 
-                        <td style={{ padding: '6px 12px', borderBottom: '1px solid #F1F5F9' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <input
-                              ref={el => inputRefs.current[a.id] = el}
-                              type={isText || isExtra ? 'text' : 'number'}
-                              value={val}
-                              onChange={e => setVals(p => ({ ...p, [a.id]: e.target.value }))}
-                              onKeyDown={e => { if (e.key === 'Enter' && !locked && val.trim()) submitOne(a); }}
-                              disabled={locked}
-                              placeholder={locked ? 'Locked' : isText || isExtra ? 'Enter text...' : 'Enter value'}
-                              style={{
-                                flex: 1, minWidth: '110px',
-                                border: `1.5px solid ${locked ? '#E2E8F0' : live?.pass === false ? '#FECACA' : live?.pass === true ? '#86EFAC' : '#E2E8F0'}`,
-                                borderRadius: '7px', padding: '6px 10px', fontSize: '13px',
-                                fontFamily: 'inherit', background: locked ? '#F8FAFC' : '#fff',
-                                color: '#1E293B', outline: 'none', cursor: locked ? 'not-allowed' : 'text',
-                              }}
-                            />
-                            {val.trim() && !locked && live && (
-                              <div style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: live.pass === false ? RD : live.pass === true ? GR : '#94A3B8' }} />
-                            )}
-                            {!locked && (
-                              <button
-                                onClick={() => submitOne(a)}
-                                disabled={!val.trim() || saving[a.id]}
-                                style={{ padding: '5px 12px', background: !val.trim() ? '#E2E8F0' : sub?.value ? '#FFFBEB' : `linear-gradient(135deg,${P},${PM})`, color: !val.trim() ? '#94A3B8' : sub?.value ? '#D97706' : '#fff', border: sub?.value ? '1px solid #FED7AA' : 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700', cursor: !val.trim() ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                {saving[a.id] ? '...' : sub?.value ? '✏️' : '✅'}
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        {/* ── COMPARTMENT MODE inputs ── */}
+                        {isCompartmentMode ? (
+                          Array.from({ length: numComp }, (_, ci) => {
+                            const cKey = `C${ci+1}`;
+                            const val  = storedComp ? (storedComp[cKey] ?? '') : (compVals[a.id]?.[cKey] ?? '');
+                            const num  = parseFloat(val);
+                            let cellPass = null;
+                            if (val?.trim() && !isNaN(num) && !isExtra) {
+                              if (spec?.min_value != null && num < parseFloat(spec.min_value)) cellPass = false;
+                              else if (spec?.max_value != null && num > parseFloat(spec.max_value)) cellPass = false;
+                              else cellPass = true;
+                            }
+                            return (
+                              <td key={cKey} style={{ padding:'6px 6px', borderBottom:'1px solid #F1F5F9', borderLeft:'1px solid #F1F5F9', textAlign:'center' }}>
+                                {isExtra ? (
+                                  // Remarks/Action: single text cell spanning not possible in table,
+                                  // so show read-only if stored, input if not
+                                  ci === 0 ? (
+                                    locked || storedComp ? (
+                                      <span style={{ fontSize:'11px', color:'#475569' }}>{val || '—'}</span>
+                                    ) : (
+                                      <input type="text" value={compVals[a.id]?.['C1']||''}
+                                        onChange={e => setComp(a.id,'C1',e.target.value)}
+                                        style={{ width:'100%', border:'1px solid #E2E8F0', borderRadius:'5px', padding:'4px 5px', fontSize:'11px', fontFamily:'inherit', outline:'none' }}
+                                        placeholder="Type..."/>
+                                    )
+                                  ) : null
+                                ) : locked || storedComp ? (
+                                  <span style={{ fontFamily:'monospace', fontWeight:'700', fontSize:'12px', color:cellPass===false?RD:cellPass===true?GR:'#475569' }}>
+                                    {val || '—'}
+                                  </span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    value={compVals[a.id]?.[cKey] ?? ''}
+                                    onChange={e => setComp(a.id, cKey, e.target.value)}
+                                    disabled={locked}
+                                    placeholder="—"
+                                    style={{
+                                      width      : '62px',
+                                      border     : `1.5px solid ${locked?'#E2E8F0':cellPass===null?'#E2E8F0':cellPass?'#86EFAC':'#FECACA'}`,
+                                      borderRadius:'5px',
+                                      padding    : '5px 4px',
+                                      fontSize   : '12px',
+                                      fontFamily : 'inherit',
+                                      background : locked?'#F8FAFC':cellPass===null?'#fff':cellPass?'#F0FDF4':'#FFF5F5',
+                                      outline    : 'none',
+                                      textAlign  : 'center',
+                                    }}
+                                  />
+                                )}
+                              </td>
+                            );
+                          })
+                        ) : (
+                          // ── STANDARD MODE input ──
+                          <td style={{ padding:'6px 12px', borderBottom:'1px solid #F1F5F9' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                              <input
+                                ref={el => inputRefs.current[a.id] = el}
+                                type={isText||isExtra?'text':'number'}
+                                value={vals[a.id]||''}
+                                onChange={e => setVals(p=>({...p,[a.id]:e.target.value}))}
+                                onKeyDown={e => { if(e.key==='Enter'&&!locked&&vals[a.id]?.trim()) submitOne(a); }}
+                                disabled={locked}
+                                placeholder={locked?'Locked':isText||isExtra?'Enter text...':'Enter value'}
+                                style={{
+                                  flex:1, minWidth:'110px',
+                                  border:`1.5px solid ${locked?'#E2E8F0':'#E2E8F0'}`,
+                                  borderRadius:'7px', padding:'6px 10px', fontSize:'13px',
+                                  fontFamily:'inherit', background:locked?'#F8FAFC':'#fff',
+                                  color:'#1E293B', outline:'none', cursor:locked?'not-allowed':'text',
+                                }}
+                              />
+                            </div>
+                          </td>
+                        )}
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
+                        {/* Status badge */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9', textAlign:'center' }}>
                           {badge
-                            ? <span style={{ background: badge.bg, color: badge.color, padding: '3px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap' }}>{badge.label}</span>
-                            : <span style={{ color: '#CBD5E1', fontSize: '11px' }}>—</span>}
+                            ? <span style={{ background:badge.bg, color:badge.color, padding:'3px 8px', borderRadius:'8px', fontSize:'10px', fontWeight:'800', whiteSpace:'nowrap' }}>{badge.label}</span>
+                            : isCompartmentMode && liveCompStatus?.status
+                              ? <span style={{ background:liveCompStatus.pass?'#DCFCE7':'#FEF2F2', color:liveCompStatus.pass?GR:RD, padding:'3px 8px', borderRadius:'8px', fontSize:'10px', fontWeight:'800' }}>
+                                  {liveCompStatus.pass?'PASS':'OOS'}
+                                </span>
+                              : <span style={{ color:'#CBD5E1', fontSize:'11px' }}>—</span>}
                         </td>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#64748B', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                        {/* Analyst */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9', color:'#64748B', fontSize:'11px', whiteSpace:'nowrap' }}>
                           {sub?.analyst || '—'}
                         </td>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', color: '#94A3B8', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                          {sub?.time ? format(new Date(sub.time), 'HH:mm') : '—'}
+                        {/* Time */}
+                        <td style={{ padding:'9px 12px', borderBottom:'1px solid #F1F5F9', color:'#94A3B8', fontSize:'11px', whiteSpace:'nowrap' }}>
+                          {sub?.time ? format(new Date(sub.time),'HH:mm') : '—'}
                         </td>
 
-                        <td style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
+                        {/* Submit / Remove */}
+                        <td style={{ padding:'9px 10px', borderBottom:'1px solid #F1F5F9', textAlign:'center' }}>
+                          {!locked && !storedComp && (
+                            <button onClick={() => submitOne(a)} disabled={saving[a.id]}
+                              style={{ padding:'5px 12px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'7px', fontSize:'11px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap', marginBottom:'3px', display:'block', width:'100%' }}>
+                              {saving[a.id] ? '...' : sub?.value ? '✏️ Update' : '✅ Submit'}
+                            </button>
+                          )}
                           {!sub?.value && !locked && (
-                            <button
-                              onClick={() => removeTest(a.id, a.tests?.name)}
-                              disabled={removing === a.id}
-                              style={{ padding: '3px 8px', background: '#FEF2F2', color: RD, border: '1px solid #FECACA', borderRadius: '5px', fontSize: '10px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>
-                              {removing === a.id ? '...' : '🗑'}
+                            <button onClick={() => removeTest(a.id, a.tests?.name)} disabled={removing===a.id}
+                              style={{ padding:'3px 8px', background:'#FEF2F2', color:RD, border:'1px solid #FECACA', borderRadius:'5px', fontSize:'10px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', display:'block', width:'100%' }}>
+                              {removing===a.id?'...':'🗑 Remove'}
                             </button>
                           )}
                           {sub?.editCount > 0 && !locked && (
-                            <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '2px' }}>
-                              {2 - (sub.editCount || 0)} left
+                            <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'2px' }}>
+                              {2-(sub.editCount||0)} left
                             </div>
                           )}
                         </td>
@@ -730,16 +939,15 @@ export default function AnalysisPage() {
               </table>
             </div>
 
-            {/* Table footer */}
-            <div style={{ padding: '8px 20px', borderTop: '1px solid #E2E8F0', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <div style={{ fontSize: '11px', color: '#94A3B8' }}>
-                Press{' '}
-                <kbd style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', color: '#475569' }}>
-                  Enter
-                </kbd>
-                {' '}on any row to submit · green border = pass · red = OOS
+            {/* Footer */}
+            <div style={{ padding:'8px 20px', borderTop:'1px solid #E2E8F0', background:'#fff', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+              <div style={{ fontSize:'11px', color:'#94A3B8' }}>
+                {isCompartmentMode
+                  ? `Enter values for C1–C${numComp} per test · click ✅ Submit per row`
+                  : <>Press <kbd style={{ background:'#F1F5F9', border:'1px solid #E2E8F0', borderRadius:'4px', padding:'1px 5px', fontSize:'10px', color:'#475569' }}>Enter</kbd> on any row to submit</>
+                }
               </div>
-              <div style={{ fontSize: '12px', color: '#94A3B8' }}>
+              <div style={{ fontSize:'12px', color:'#94A3B8' }}>
                 {totalN - subN} remaining
               </div>
             </div>
@@ -747,7 +955,6 @@ export default function AnalysisPage() {
         )}
       </div>
 
-      {/* Sample edit modal */}
       {showEdit && sample && (
         <SampleEditModal
           sample={sample}
