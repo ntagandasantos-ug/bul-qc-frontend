@@ -23,6 +23,7 @@ import SoapLinePage              from './pages/SoapLinePage';
 import DetergentLinePage         from './pages/DetergentLinePage';
 import PlasticsLinePage          from './pages/PlasticsLinePage';
 import OilLinePage               from './pages/OilLinePage';
+import FatsLinePage              from './pages/FatsLinePage';
 
 // ── Role-based dashboard selector ────────────────────────
 // QC Head and QC Assistant → new QC Head Dashboard
@@ -127,6 +128,12 @@ export default function App() {
           <Route path="/inspection/oil" element={
             <ProtectedRoute roles={['QC Head','QC Assistant', 'Shift Supervisor', 'Analyst']}>
               <OilLinePage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/inspection/fats" element={
+            <ProtectedRoute roles={['QC Head','QC Assistant', 'Shift Supervisor', 'Analyst']}>
+              <FatsLinePage />
             </ProtectedRoute>
           } />
 
