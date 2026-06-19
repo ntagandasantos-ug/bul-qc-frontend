@@ -63,7 +63,7 @@ export default function LoginPage() {
     else if (deptCode === 'SOAP') navigate('/dashboard/soap', { replace: true });
     else                         navigate('/dashboard/dept', { replace: true });
   } else {
-    navigate('/dashboard', { replace: true });
+    navigate(window.innerWidth < 1024 ? '/home' : '/dashboard', { replace: true });
   }
 };
 
