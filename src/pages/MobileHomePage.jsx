@@ -289,7 +289,7 @@ export default function MobileHomePage() {
 
         {/* Footer */}
         <div style={{ textAlign:'center', marginTop:'28px', fontSize:'11px', color:'rgba(255,255,255,0.3)', animation:'fadeUp 0.5s ease 0.6s both' }}>
-          BUL QC LIMS v1.0.4 · Santos @ QC 2026
+          BUL QC LIMS v1.0.4 · Powered By: SantosInfographics-2026
         </div>
       </div>
     </div>
