@@ -173,7 +173,7 @@ export default function App() {
           } />
 
           <Route path="/inventory" element={
-  <ProtectedRoute>
+  <ProtectedRoute roles={['QC Head','QC Assistant', 'Shift Supervisor', 'Analyst']}>
     <InventoryPage />
   </ProtectedRoute>
 } />

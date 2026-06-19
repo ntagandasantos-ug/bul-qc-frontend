@@ -1,12 +1,18 @@
 // ============================================================
 // FILE: src/components/BottomNavBar.jsx
 // Persistent bottom navigation — phone & tablet only (<1024px)
-// 5 icons: Home · Dashboard · Stock · Line Inspection · Profile
-// Line Inspection and Profile open a slide-up sheet
+//
+// RESTRICTION: Department Head / Department Assistant roles
+// only get Home + Dashboard active. Stock and Inspect are
+// shown greyed out and locked — tapping shows a notice.
+// Profile stays active so they can still sign out.
+// Both Home and Dashboard route them straight to their own
+// department dashboard.
 // ============================================================
 
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { toast }       from 'react-toastify';
 import { useAuth }     from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -38,6 +44,28 @@ const LINE_ITEMS = [
   { icon:'📋', label:'Daily Summary',   route:'/inspection/summary'   },
 ];
 
+// ── Roles restricted to dashboard-only access ─────────────
+const RESTRICTED_ROLES = ['Department Head', 'Department Assistant'];
+
+// ── Department code → dashboard route map ─────────────────
+const DEPT_DASHBOARD_MAP = {
+  DET   : '/dashboard/dept',
+  REF   : '/dashboard/ref',
+  FP    : '/dashboard/fp',
+  SOAP  : '/dashboard/soap',
+  BOILER: '/dashboard/boiler',
+};
+
+// Try a few possible shapes of department info on the user object
+function getDeptCode(user) {
+  return (
+    user?.departments?.code ||
+    user?.department?.code  ||
+    user?.department_code   ||
+    null
+  );
+}
+
 export default function BottomNavBar() {
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -47,13 +75,18 @@ export default function BottomNavBar() {
   const [showLines,   setShowLines]   = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
-  // Don't render on desktop, login page, or when not authenticated
   if (!isMobile) return null;
   if (location.pathname === '/login') return null;
   if (!user) return null;
 
-  const path = location.pathname;
-  const isActive = (route) => path === route || path.startsWith(route + '/');
+  const path     = location.pathname;
+  const roleName = user?.roles?.name || '';
+  const isRestricted = RESTRICTED_ROLES.includes(roleName);
+
+  // ── Resolve this user's own department dashboard route ───
+  const deptCode  = getDeptCode(user);
+  const deptRoute = deptCode ? DEPT_DASHBOARD_MAP[deptCode] : null;
+
   const isLineActive = path.startsWith('/inspection');
 
   const go = (route) => {
@@ -62,21 +95,86 @@ export default function BottomNavBar() {
     navigate(route);
   };
 
+  // ── Action when a restricted icon is tapped ───────────────
+  const blocked = (label) => {
+    toast.info(`🔒 ${label} is not available for your role`, { autoClose: 2500 });
+  };
+
+  // ── Home / Dashboard action — different for restricted roles ─
+  const goHomeOrDashboard = () => {
+    if (isRestricted) {
+      if (deptRoute) {
+        go(deptRoute);
+      } else {
+        toast.warning('Department dashboard not configured — contact admin');
+      }
+      return;
+    }
+    go('/home');
+  };
+
+  const goDashboard = () => {
+    if (isRestricted) {
+      if (deptRoute) {
+        go(deptRoute);
+      } else {
+        toast.warning('Department dashboard not configured — contact admin');
+      }
+      return;
+    }
+    go('/dashboard');
+  };
+
   const NAV_ITEMS = [
-    { key:'home',      icon:'🏠', label:'Home',      action:() => go('/home')      },
-    { key:'dashboard', icon:'📊', label:'Dashboard', action:() => go('/dashboard') },
-    { key:'stock',     icon:'📦', label:'Stock',      action:() => go('/inventory') },
-    { key:'line',       icon:'🔍', label:'Inspect',    action:() => setShowLines(p=>!p) },
-    { key:'profile',    icon:'👤', label:'Profile',    action:() => setShowProfile(p=>!p) },
+    {
+      key      : 'home',
+      icon     : '🏠',
+      label    : 'Home',
+      disabled : false,
+      action   : goHomeOrDashboard,
+    },
+    {
+      key      : 'dashboard',
+      icon     : '📊',
+      label    : 'Dashboard',
+      disabled : false,
+      action   : goDashboard,
+    },
+    {
+      key      : 'stock',
+      icon     : '📦',
+      label    : 'Stock',
+      disabled : isRestricted,
+      action   : () => isRestricted ? blocked('Stock / Inventory') : go('/inventory'),
+    },
+    {
+      key      : 'line',
+      icon     : '🔍',
+      label    : 'Inspect',
+      disabled : isRestricted,
+      action   : () => isRestricted ? blocked('Line Inspection') : setShowLines(p => !p),
+    },
+    {
+      key      : 'profile',
+      icon     : '👤',
+      label    : 'Profile',
+      disabled : false, // kept active so users can always sign out
+      action   : () => setShowProfile(p => !p),
+    },
   ];
 
+  // ── Determine which tab is visually active ────────────────
   const activeKey =
     showLines   ? 'line'    :
     showProfile ? 'profile' :
-    path === '/home'                  ? 'home'      :
-    path === '/inventory'             ? 'stock'     :
-    isLineActive                      ? 'line'      :
-    (path === '/dashboard' || path.startsWith('/dashboard/')) ? 'dashboard' : '';
+    isRestricted
+      ? (deptRoute && path === deptRoute ? 'dashboard' : '')
+      : (
+          path === '/home' ? 'home' :
+          path === '/inventory' ? 'stock' :
+          isLineActive ? 'line' :
+          (path === '/dashboard' || path.startsWith('/dashboard/')) ? 'dashboard' : ''
+        );
 
   return (
     <>
@@ -93,8 +191,8 @@ export default function BottomNavBar() {
         />
       )}
 
-      {/* ── Line Inspection sheet ── */}
-      {showLines && (
+      {/* ── Line Inspection sheet (never shown for restricted roles) ── */}
+      {showLines && !isRestricted && (
         <div style={{
           position:'fixed', left:0, right:0, bottom:0, zIndex:999,
           background:'#fff', borderRadius:'24px 24px 0 0',
@@ -142,21 +240,25 @@ export default function BottomNavBar() {
             </div>
             <div>
               <div style={{ fontWeight:'800', fontSize:'15px', color:'#fff' }}>{user?.full_name}</div>
-              <div style={{ fontSize:'12px', color:'#DDD6FE' }}>{user?.roles?.name || '—'}</div>
+              <div style={{ fontSize:'12px', color:'#DDD6FE' }}>{roleName || '—'}</div>
             </div>
           </div>
 
-          {/* Menu items */}
+          {/* Menu items — restricted roles only see their dashboard link */}
           <div style={{ display:'flex', flexDirection:'column', gap:'4px', marginBottom:'10px' }}>
-            <button className="nav-tap" onClick={() => go('/register-sample')}
-              style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 10px', background:'none', border:'none', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
-              <span style={{ fontSize:'20px' }}>🧪</span>
-              <span style={{ fontSize:'14px', fontWeight:'600', color:'#1E293B' }}>Register Sample</span>
-            </button>
-            <button className="nav-tap" onClick={() => go('/dashboard')}
+            {!isRestricted && (
+              <button className="nav-tap" onClick={() => go('/register-sample')}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 10px', background:'none', border:'none', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+                <span style={{ fontSize:'20px' }}>🧪</span>
+                <span style={{ fontSize:'14px', fontWeight:'600', color:'#1E293B' }}>Register Sample</span>
+              </button>
+            )}
+            <button className="nav-tap" onClick={goDashboard}
               style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 10px', background:'none', border:'none', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
               <span style={{ fontSize:'20px' }}>📊</span>
-              <span style={{ fontSize:'14px', fontWeight:'600', color:'#1E293B' }}>Sample Dashboard</span>
+              <span style={{ fontSize:'14px', fontWeight:'600', color:'#1E293B' }}>
+                {isRestricted ? 'My Department Dashboard' : 'Sample Dashboard'}
+              </span>
             </button>
           </div>
 
@@ -178,28 +280,36 @@ export default function BottomNavBar() {
       }}>
         {NAV_ITEMS.map(item => {
           const active = activeKey === item.key;
+          const disabled = item.disabled;
           return (
             <button key={item.key} className="nav-tap" onClick={item.action}
               style={{
                 flex:1, height:'100%', display:'flex', flexDirection:'column',
                 alignItems:'center', justifyContent:'center', gap:'2px',
-                background:'none', border:'none', cursor:'pointer', fontFamily:'inherit',
-                position:'relative',
+                background:'none', border:'none', cursor: disabled ? 'not-allowed' : 'pointer',
+                fontFamily:'inherit', position:'relative',
               }}>
-              {active && (
+              {active && !disabled && (
                 <div style={{ position:'absolute', top:0, width:'32px', height:'3px', background:`linear-gradient(90deg,${P},${PM})`, borderRadius:'0 0 4px 4px' }}/>
               )}
+
               <span style={{
                 fontSize:'21px',
-                filter: active ? 'none' : 'grayscale(0.4) opacity(0.6)',
-                animation: active ? 'bounce 0.6s ease' : 'none',
+                filter: disabled ? 'grayscale(1) opacity(0.35)' : active ? 'none' : 'grayscale(0.4) opacity(0.6)',
+                animation: active && !disabled ? 'bounce 0.6s ease' : 'none',
                 transition:'filter 0.2s',
+                position:'relative',
               }}>
                 {item.icon}
+                {disabled && (
+                  <span style={{ position:'absolute', top:'-2px', right:'-6px', fontSize:'10px' }}>🔒</span>
+                )}
               </span>
+
               <span style={{
-                fontSize:'10px', fontWeight: active ? '800' : '600',
-                color: active ? P : '#94A3B8',
+                fontSize:'10px',
+                fontWeight: active && !disabled ? '800' : '600',
+                color: disabled ? '#CBD5E1' : active ? P : '#94A3B8',
               }}>
                 {item.label}
               </span>
