@@ -26,7 +26,7 @@ import OilLinePage               from './pages/OilLinePage';
 import FatsLinePage              from './pages/FatsLinePage';
 import DailySummaryPage          from './pages/DailySummaryPage';
 import MobileHomePage            from './pages/MobileHomePage';
-
+import BottomNavBar              from './components/BottomNavBar';
 // ── Role-based dashboard selector ────────────────────────
 // QC Head and QC Assistant → new QC Head Dashboard
 // Everyone else           → old Sample Tracking Dashboard
@@ -183,6 +183,7 @@ export default function App() {
           <Route path="*"  element={<Navigate to="/login"     replace />} />
 
         </Routes>
+        <BottomNavBar />
       </BrowserRouter>
     </AuthProvider>
   );
