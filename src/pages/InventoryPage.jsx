@@ -533,7 +533,7 @@ const newItem = res.data?.item;
               }
               setAddModal(false); setEditItem(null);
               load();
-            } catch(e) { showToast(e.message,'error'); }
+            } catch(e) { showToast(e.response?.data?.error || e.message, 'error'); }
             finally { setSaving(false); }
           }}
         />
@@ -555,7 +555,7 @@ const newItem = res.data?.item;
               }
               showToast('Stock updated · Email notification sent to QC Head');
               setStockModal(null); load();
-            } catch(e) { showToast(e.message,'error'); }
+            } catch(e) { showToast(e.response?.data?.error || e.message, 'error'); }
             finally { setSaving(false); }
           }}
         />
@@ -572,7 +572,7 @@ const newItem = res.data?.item;
               await api.post('/inventory/breakage', payload);
               showToast('Breakage recorded · QC Head notified via email');
               setBreakModal(null); load();
-            } catch(e) { showToast(e.message,'error'); }
+            } catch(e) { showToast(e.response?.data?.error || e.message, 'error'); }
             finally { setSaving(false); }
           }}
         />
