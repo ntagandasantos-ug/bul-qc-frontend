@@ -43,10 +43,10 @@ const lbl = { display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95
 const fld = { marginBottom:'12px' };
 
 // ── Overlay wrapper ──────────────────────────────────────
-const Overlay = ({ onClose, children, maxWidth=560 }) => (
+const Overlay = ({ onClose, children, maxWidth=560, fullScreen=false }) => (
   <div onClick={e=>{if(e.target===e.currentTarget)onClose();}}
-    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.58)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-    <div style={{ background:'#fff', borderRadius:'18px', maxWidth, width:'100%', maxHeight:'92vh', overflow:'hidden', boxShadow:'0 28px 80px rgba(0,0,0,0.35)', display:'flex', flexDirection:'column' }}>
+    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.58)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding: fullScreen?'0':'16px' }}> 
+    <div style={{ background:'#fff', borderRadius: fullScreen?'0':'18px', maxWidth: fullScreen?'100%':maxWidth, width:'100%', height: fullScreen?'100%':'auto', maxHeight: fullScreen?'100%':'92vh', overflow:'hidden', boxShadow: fullScreen?'none':'0 28px 80px rgba(0,0,0,0.35)', display:'flex', flexDirection:'column' }}>
       {children}
     </div>
   </div>
@@ -680,7 +680,7 @@ export function StockBalanceSheet({ onClose }) {
   };
 
   return(
-    <Overlay onClose={onClose} maxWidth={900}>
+    <Overlay onClose={onClose} fullScreen>
       <div style={{ background:`linear-gradient(135deg,${P},${PM})`, padding:'16px 22px', color:'#fff', flexShrink:0, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <div style={{ fontWeight:'900', fontSize:'16px' }}>📊 Stock Balance Sheet</div>
@@ -737,7 +737,7 @@ export function StockBalanceSheet({ onClose }) {
                 const ml=getStock(item,'MAIN_LAB');
                 const dl=getStock(item,'DET_LAB');
                 const total=cs.quantity+ml.quantity+dl.quantity;
-                const low=cs.quantity<=item.reorder_level;
+                const low=ml.quantity<=item.reorder_level;
                 const td=(v,opts={})=>(
                   <td style={{ padding:'8px 10px', borderBottom:'1px solid #EDE9FE', background:bg, fontSize:'12px', whiteSpace:'nowrap', ...opts }}>
                     {v}
@@ -769,7 +769,7 @@ export function StockBalanceSheet({ onClose }) {
       </div>
 
       <div style={{ padding:'8px 18px', background:'#F5F3FF', borderTop:`1px solid ${PL}`, fontSize:'11px', color:'#9CA3AF', flexShrink:0 }}>
-        {items.length} item(s) · ⚠️ = below reorder level (Chemical Store)
+        {items.length} item(s) · ⚠️ = below reorder level (Main Lab)
       </div>
     </Overlay>
   );

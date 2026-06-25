@@ -76,19 +76,40 @@ export default function InventoryPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ category: activeCat });
-      if (search)    params.append('search', search);
-      if (filterOrig) params.append('country', filterOrig);
-      if (showLow)   params.append('low_stock', 'true');
-
-      const res = await api.get(`/inventory/items?${params.toString()}`);
+      const res = await api.get('/inventory/items');
       let data = res.data?.items || [];
+
+      // Filter by the active category's name (matches inventory_full_status.category_name)
+      const catName = CATS.find(c => c.code === activeCat)?.name;
+      if (catName) {
+        data = data.filter(item => item.category_name === catName);
+      }
+
+      if (search) {
+        const q = search.toLowerCase();
+        data = data.filter(item =>
+          item.item_name?.toLowerCase().includes(q) ||
+          item.item_code?.toLowerCase().includes(q)
+        );
+      }
+
+      if (filterOrig) {
+        data = data.filter(item => item.country_of_origin === filterOrig);
+      }
 
       if (filterLoc !== 'ALL') {
         data = data.filter(item =>
           (item.inventory_stock||[]).some(s => s.location === filterLoc && s.quantity > 0)
         );
       }
+
+      if (showLow) {
+        data = data.filter(item => {
+          const main = (item.inventory_stock||[]).find(s => s.location === 'MAIN_LAB');
+          return (main?.quantity || 0) <= item.reorder_level;
+        });
+      }
+
       setItems(data);
     } catch(e) {
       console.error(e);
@@ -374,17 +395,27 @@ export default function InventoryPage() {
                   <thead>
                     <tr>
                       {[
-                        'Item Name','Code',
-                        ...(isChemical(activeCat)?['Specifications','Storage','Restrictions']:cat?.code==='PH_BUFFER'?['Brand','pH Range','Storage']:['Capacity','Type/Brand']),
-                        'Unit','Origin','Expiry','Reorder Lvl',
-                        'Chemical Store','Main Lab','Det Lab',
-                        ...(hasInUse(activeCat)?['ML In-Use','ML In-Stock','DL In-Use','DL In-Stock']:[]),
-                        'Comments','Actions',
-                      ].map(h => (
-                        <th key={h} style={{ position:'sticky', top:0, background:`linear-gradient(180deg,${P},#5B1894)`, color: ['Chemical Store','Reorder Lvl'].includes(h)?G:'#fff', padding:'9px 10px', textAlign:'left', fontSize:'11px', fontWeight:'800', whiteSpace:'nowrap', borderBottom:'2px solid rgba(255,255,255,0.2)', borderRight:'1px solid rgba(255,255,255,0.15)', zIndex:50 }}>
-                          {h}
-                        </th>
-                      ))}
+  'Item Name','Code',
+  ...(isChemical(activeCat)?['Specifications','Storage','Restrictions']:cat?.code==='PH_BUFFER'?['Brand','pH Range','Storage']:['Capacity','Type/Brand']),
+  'Unit','Origin','Expiry','Reorder Lvl',
+  'Chemical Store','Main Lab','Det Lab',
+  ...(hasInUse(activeCat)?['ML In-Use','ML In-Stock','DL In-Use','DL In-Stock']:[]),
+  'Comments','Actions',
+].map((h, hi) => (
+  <th key={h} style={{
+    position:'sticky', top:0,
+    left: hi===0 ? 0 : undefined,
+    background:`linear-gradient(180deg,${P},#5B1894)`,
+    color: ['Chemical Store','Reorder Lvl'].includes(h)?G:'#fff',
+    padding:'9px 10px', textAlign:'left', fontSize:'11px', fontWeight:'800',
+    whiteSpace:'nowrap', borderBottom:'2px solid rgba(255,255,255,0.2)',
+    borderRight:'1px solid rgba(255,255,255,0.15)',
+    zIndex: hi===0 ? 60 : 50,
+    boxShadow: hi===0 ? '2px 0 4px rgba(0,0,0,0.15)' : 'none',
+  }}>
+    {h}
+  </th>
+))}
                     </tr>
                   </thead>
                   <tbody>
@@ -405,11 +436,19 @@ export default function InventoryPage() {
                           onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
                           onMouseLeave={e=>e.currentTarget.style.filter='none'}
                         >
-                          {/* Item name */}
-                          <td style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#F5F3FF':'#fff', fontWeight:'700', color:'#1F2937', whiteSpace:'nowrap', borderRight:'1px solid #EDE9FE' }}>
-                            {low && <span style={{ fontSize:'10px', color:RD, fontWeight:'800', display:'block', marginBottom:'2px' }}>⚠️ LOW STOCK</span>}
-                            {item.item_name}
-                          </td>
+                          {/* Item name — sticky/frozen while scrolling horizontally */}
+<td style={{
+  position:'sticky', left:0,
+  padding:'9px 10px', borderBottom:'1px solid #EDE9FE',
+  background:even?'#F5F3FF':'#fff',
+  fontWeight:'700', color:'#1F2937', whiteSpace:'nowrap',
+  borderRight:'1px solid #EDE9FE',
+  zIndex:40,
+  boxShadow:'2px 0 4px rgba(0,0,0,0.08)',
+}}>
+  {low && <span style={{ fontSize:'10px', color:RD, fontWeight:'800', display:'block', marginBottom:'2px' }}>⚠️ LOW STOCK</span>}
+  {item.item_name}
+</td>
                           {td(<span style={{ fontFamily:'monospace', fontSize:'11px', color:PM, fontWeight:'700' }}>{item.item_code||'—'}</span>)}
 
                           {isChemical(activeCat) && <>
