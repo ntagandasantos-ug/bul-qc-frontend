@@ -431,7 +431,7 @@ export default function InventoryPage() {
                         </td>
                       );
                       return (
-                        <tr key={item.id}
+                        <tr key={item.item_id}
                           style={{ outline:low?'2px solid #FECACA':'none', outlineOffset:'-1px' }}
                           onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
                           onMouseLeave={e=>e.currentTarget.style.filter='none'}
@@ -491,8 +491,8 @@ export default function InventoryPage() {
 
                           {hasInUse(activeCat) && <>
                             {[{s:ml,loc:'MAIN_LAB'},{s:dl,loc:'DET_LAB'}].flatMap(({s,loc}) => [
-                              <td key={`${item.id}-${loc}-iu`} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#FAFAFA':'#fff', textAlign:'center', color:'#EA580C', fontWeight:'700' }}>{s.in_use||0}</td>,
-                              <td key={`${item.id}-${loc}-is`} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#FAFAFA':'#fff', textAlign:'center', color:GR, fontWeight:'700' }}>{s.in_stock||0}</td>,
+                              <td key={`${item.item_id}-${loc}-iu`} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#FAFAFA':'#fff', textAlign:'center', color:'#EA580C', fontWeight:'700' }}>{s.in_use||0}</td>,
+                              <td key={`${item.item_id}-${loc}-is`} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#FAFAFA':'#fff', textAlign:'center', color:GR, fontWeight:'700' }}>{s.in_stock||0}</td>,
                             ])}
                           </>}
 
@@ -505,7 +505,7 @@ export default function InventoryPage() {
                                 style={{ padding:'4px 8px', background:'#F5F3FF', color:P, border:`1px solid ${PL}`, borderRadius:'6px', fontSize:'11px', cursor:'pointer', fontFamily:'inherit', fontWeight:'600' }}>
                                 ✏️
                               </button>
-                              <button onClick={() => setBreakModal({ item_id:item.id, item_name:item.item_name, unit:item.unit_of_measurement })}
+                              <button onClick={() => setBreakModal({ item_id:item.item_id, item_name:item.item_name, unit:item.unit_of_measurement })}
                                 style={{ padding:'4px 8px', background:'#FEF2F2', color:RD, border:'1px solid #FECACA', borderRadius:'6px', fontSize:'11px', cursor:'pointer', fontFamily:'inherit', fontWeight:'600' }}>
                                 💔
                               </button>
@@ -537,7 +537,7 @@ export default function InventoryPage() {
             setSaving(true);
             try {
               if (editItem) {
-                await api.put(`/inventory/items/${editItem.id}`, data);
+                await api.put(`/inventory/items/${editItem.item_id}`, data);
                 showToast('Item updated');
               } else {
                 const catRes = await supabase.from('inventory_categories').select('id').eq('code',activeCat).single();
@@ -559,7 +559,7 @@ const newItem = res.data?.item;
                 for (const { loc, qty } of locs) {
                   if (qty > 0 && newItem?.id) {
                     await supabase.from('inventory_stock').upsert({
-                      item_id    : newItem.id,
+                      item_id    : newItem.item_id,
                       location   : loc,
                       quantity   : qty,
                       in_stock   : qty,
@@ -588,9 +588,9 @@ const newItem = res.data?.item;
             setSaving(true);
             try {
               if (payload.in_use !== undefined) {
-                await api.post('/inventory/in-use-update', { item_id:stockModal.item.id, location:stockModal.location, ...payload });
+                await api.post('/inventory/in-use-update', { item_id:stockModal.item.item_id, location:stockModal.location, ...payload });
               } else {
-                await api.post('/inventory/stock-update', { item_id:stockModal.item.id, location:stockModal.location, ...payload });
+                await api.post('/inventory/stock-update', { item_id:stockModal.item.item_id, location:stockModal.location, ...payload });
               }
               showToast('Stock updated · Email notification sent to QC Head');
               setStockModal(null); load();
