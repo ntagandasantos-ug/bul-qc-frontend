@@ -128,17 +128,19 @@ export default function InventoryPage() {
 
   // Stock helper
   const getStock = (item, location) => {
-    const s = (item.inventory_stock||[]).find(x=>x.location===location);
-    return s || { quantity:0, in_stock:0, in_use:0 };
+  const map = {
+    CHEMICAL_STORE: { quantity: item.chemical_store_qty, in_stock: item.chemical_store_qty, in_use: 0 },
+    MAIN_LAB:       { quantity: item.main_lab_qty,       in_stock: item.main_lab_not_in_use, in_use: item.main_lab_in_use },
+    DET_LAB:        { quantity: item.det_lab_qty,        in_stock: item.det_lab_qty - (item.det_lab_in_use||0), in_use: item.det_lab_in_use },
   };
+  const s = map[location];
+  return s || { quantity:0, in_stock:0, in_use:0 };
+};
 
   const totalStock = (item) =>
-    (item.inventory_stock||[]).reduce((n,s)=>n+(s.quantity||0),0);
+    (item.chemical_store_qty||0) + (item.main_lab_qty||0) + (item.det_lab_qty||0);
 
-  const isLow = (item) => {
-    const main = getStock(item,'MAIN_LAB');
-    return main.quantity <= item.reorder_level;
-  };
+  const isLow = (item) => item.is_low_stock === true;
 
   // EXPORT EXCEL
   const exportExcel = () => {
