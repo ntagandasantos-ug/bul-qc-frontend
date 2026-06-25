@@ -5,6 +5,14 @@
 //   - TransferModal (lab to lab transfer with counter-sign)
 //   - UsageModal (record item picked for use from lab)
 //   - StockBalanceSheet (filtered print/export)
+//
+// FIX: Each modal now calls its dedicated backend endpoint
+// (/inventory/requisition, /inventory/transfer, /inventory/usage)
+// which already does the full stock movement + transaction log
+// + low-stock email atomically server-side. The old code made
+// extra manual /inventory/stock-update calls with a
+// transaction_type ('TRANSFER') the backend doesn't accept,
+// causing a 400 error right after every successful action.
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -104,46 +112,24 @@ export function RequisitionModal({ onClose, onSuccess, showToast }) {
 
     setSubmitting(true);
     try {
-      // Create requisition
+      // The backend's createRequisition does EVERYTHING in one call:
+      // reduces Chemical Store, increases the requesting lab, logs the
+      // requisition + transactions, and fires the low-stock email.
+      // No follow-up /stock-update calls are needed (or supported).
       const res = await api.post('/inventory/requisition', {
-        requesting_lab : requestingLab,
-        requester_name : requesterName.trim(),
-        notes          : notes.trim() || null,
-        items          : selItems.map(si=>({
-          item_id  : si.item.id,
-          item_name: si.item.item_name,
-          quantity : parseFloat(si.quantity),
-          unit     : si.item.unit_of_measurement,
+        requesting_lab: requestingLab,
+        notes         : notes.trim() || null,
+        items         : selItems.map(si=>({
+          item_id            : si.item.id,
+          quantity_requested : parseFloat(si.quantity),
         })),
       });
 
       setReqNo(res.data?.requisition?.requisition_no || 'REQ-NEW');
-
-      // Auto-reduce chemical store + increase requesting lab for each item
-      for (const si of selItems) {
-        // Reduce chemical store
-        await api.post('/inventory/stock-update', {
-          item_id         : si.item.id,
-          location        : 'CHEMICAL_STORE',
-          quantity        : parseFloat(si.quantity),
-          transaction_type: 'STOCK_OUT',
-          to_location     : requestingLab,
-          notes           : `Issued to ${requestingLab.replace('_',' ')} via requisition`,
-        });
-        // Increase requesting lab
-        await api.post('/inventory/stock-update', {
-          item_id         : si.item.id,
-          location        : requestingLab,
-          quantity        : parseFloat(si.quantity),
-          transaction_type: 'STOCK_IN',
-          notes           : `Received from Chemical Store via requisition`,
-        });
-      }
-
       setDone(true);
       if (onSuccess) onSuccess();
     } catch(e) {
-      showToast('Requisition failed: ' + e.message, 'error');
+      showToast('Requisition failed: ' + (e.response?.data?.error || e.message), 'error');
     } finally { setSubmitting(false); }
   };
 
@@ -362,31 +348,21 @@ export function TransferModal({ onClose, onSuccess, showToast }) {
 
     setSubmitting(true);
     try {
-      const item = allItems.find(i=>i.id===selItem);
-
-      // Reduce from-lab
-      await api.post('/inventory/stock-update', {
-        item_id         : selItem,
-        location        : fromLab,
-        quantity        : parseFloat(quantity),
-        transaction_type: 'TRANSFER',
-        to_location     : toLab,
-        notes           : `Transfer to ${toLab.replace('_',' ')} by ${clerkName} · Counter-signed: ${counterSign}`,
-      });
-
-      // Increase to-lab
-      await api.post('/inventory/stock-update', {
-        item_id         : selItem,
-        location        : toLab,
-        quantity        : parseFloat(quantity),
-        transaction_type: 'STOCK_IN',
-        notes           : `Transfer received from ${fromLab.replace('_',' ')} by ${clerkName}`,
+      // The backend's createTransfer does the full move in one call:
+      // reduces from_lab, increases to_lab, logs the transfer +
+      // transaction, and fires the low-stock email if needed.
+      await api.post('/inventory/transfer', {
+        item_id : selItem,
+        quantity: parseFloat(quantity),
+        from_lab: fromLab,
+        to_lab  : toLab,
+        notes   : `${notes ? notes + ' · ' : ''}Transferred by ${clerkName} · Counter-signed: ${counterSign}`,
       });
 
       setDone(true);
       if (onSuccess) onSuccess();
     } catch(e) {
-      showToast('Transfer failed: ' + e.message,'error');
+      showToast('Transfer failed: ' + (e.response?.data?.error || e.message),'error');
     } finally { setSubmitting(false); }
   };
 
@@ -539,17 +515,21 @@ export function UsageModal({ onClose, onSuccess, showToast }) {
 
     setSubmitting(true);
     try{
-      await api.post('/inventory/stock-update',{
-        item_id         : selItem,
-        location        : lab,
-        quantity        : parseFloat(quantity),
-        transaction_type: 'STOCK_OUT',
-        notes           : `Used by ${staffName.trim()} for: ${purpose||'Lab analysis'}`,
+      // The backend's recordUsage handles the stock move + transaction
+      // log + low-stock email in one call. action 'consume' permanently
+      // removes the quantity from this lab's stock.
+      await api.post('/inventory/usage',{
+        item_id : selItem,
+        location: lab,
+        action  : 'consume',
+        quantity: parseFloat(quantity),
+        purpose : purpose || 'Lab analysis',
+        used_by : staffName.trim(),
       });
       setDone(true);
       if(onSuccess) onSuccess();
     }catch(e){
-      showToast('Failed to record usage: '+e.message,'error');
+      showToast('Failed to record usage: '+(e.response?.data?.error || e.message),'error');
     }finally{setSubmitting(false);}
   };
 

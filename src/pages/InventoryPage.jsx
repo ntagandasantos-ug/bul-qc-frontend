@@ -115,8 +115,8 @@ export default function InventoryPage() {
     (item.inventory_stock||[]).reduce((n,s)=>n+(s.quantity||0),0);
 
   const isLow = (item) => {
-    const store = getStock(item,'CHEMICAL_STORE');
-    return store.quantity <= item.reorder_level;
+    const main = getStock(item,'MAIN_LAB');
+    return main.quantity <= item.reorder_level;
   };
 
   // EXPORT EXCEL
@@ -199,7 +199,7 @@ export default function InventoryPage() {
         didDrawCell: (data) => {
           if (data.section==='body' && data.column.index >= 6) {
             const item = items[data.row.index];
-            if (item && data.column.index===6 && isLow(item)) doc.setTextColor(220,38,38);
+            if (item && data.column.index===7 && isLow(item)) doc.setTextColor(220,38,38);
           }
         },
       });
@@ -439,7 +439,7 @@ export default function InventoryPage() {
                           {/* Stock cells */}
                           {[cs,ml,dl].map((s,si) => (
                             <td key={si} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', borderRight:'1px solid #F5F3FF', background:even?'#FAFAFA':'#fff', textAlign:'center', verticalAlign:'top' }}>
-                              <div style={{ fontWeight:'900', fontSize:'15px', color: si===0&&low ? RD : s.quantity===0 ? '#9CA3AF' : '#1F2937' }}>
+                              <div style={{ fontWeight:'900', fontSize:'15px', color: si===1&&low ? RD : s.quantity===0 ? '#9CA3AF' : '#1F2937' }}>
                                 {s.quantity}
                               </div>
                               <div style={{ fontSize:'10px', color:'#9CA3AF' }}>{item.unit_of_measurement||''}</div>
