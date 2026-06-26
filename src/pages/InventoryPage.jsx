@@ -701,10 +701,10 @@ export default function InventoryPage() {
       )}
 
       {isMobile && mobileSheetOpen && (
-        <div onClick={() => setMobileSheetOpen(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:550, display:'flex', alignItems:'flex-end' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:'20px 20px 0 0', width:'100%', padding:'10px 16px 28px' }}>
-            <div style={{ width:'36px', height:'4px', background:'#E5E7EB', borderRadius:'10px', margin:'4px auto 14px' }} />
-            <div style={{ fontWeight:800, fontSize:'14px', color:'#1F2937', marginBottom:'12px' }}>Quick Actions</div>
+  <div onClick={() => setMobileSheetOpen(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:550, display:'flex', alignItems:'flex-end' }}>
+    <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:'20px 20px 0 0', width:'100%', maxHeight:'75vh', overflowY:'auto', padding:'10px 16px calc(28px + 80px)' }}>
+      <div style={{ width:'36px', height:'4px', background:'#E5E7EB', borderRadius:'10px', margin:'4px auto 14px', position:'sticky', top:0 }} />
+      <div style={{ fontWeight:800, fontSize:'14px', color:'#1F2937', marginBottom:'12px' }}>Quick Actions</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
               <button onClick={() => { setMobileSheetOpen(false); setReqModal(true); }}
                 style={{ display:'flex', alignItems:'center', gap:'8px', padding:'13px 12px', borderRadius:'12px', border:'none', background:PM, color:'#fff', fontSize:'13px', fontWeight:700 }}>
