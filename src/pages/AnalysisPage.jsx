@@ -3,6 +3,8 @@
 // Step 1: Select tests · Step 2: Enter results
 // Compartment mode: Boiler Fuels & Liquids samples get
 //   C1/C2/C3/C4... inputs per test (stored as JSON)
+// Desktop: original two-column table layout (unchanged)
+// Mobile/Tablet (<=1024px): card-based responsive layout
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -21,6 +23,7 @@ const PL = '#EDE9FE';
 const G  = '#FFB81C';
 const GR = '#16A34A';
 const RD = '#DC2626';
+const AM = '#D97706';
 
 // ── Sample types that use compartment mode ────────────────
 // Boiler Fuels & Liquids: Petrol, Diesel, Furnace Oil
@@ -138,6 +141,14 @@ export default function AnalysisPage() {
   const navigate = useNavigate();
   const { user, signingAs } = useAuth();
 
+  // ── Responsive breakpoint detection ──────────────────────
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 1024 : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // ── State ─────────────────────────────────────────────────
   const [sample,        setSample]        = useState(null);
   const [loading,       setLoading]       = useState(true);
@@ -159,6 +170,8 @@ export default function AnalysisPage() {
   const [savingAll,     setSavingAll]     = useState(false);
   const [showEdit,      setShowEdit]      = useState(false);
   const [removing,      setRemoving]      = useState(null);
+  // Mobile-only UI state
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const inputRefs = useRef({});
 
   // ── Detect if sample uses compartment mode ────────────────
@@ -205,35 +218,35 @@ export default function AnalysisPage() {
       const isCompMode  = COMPARTMENT_TYPE_CODES.includes(data?.sample_types?.code || '');
 
       if (assignments.length === 0) {
-  // Step 1 — load available tests
-  const typeId = data?.sample_types?.id;
-  const subtypeName = data?.sample_subtypes?.name || null;
+        // Step 1 — load available tests
+        const typeId = data?.sample_types?.id;
+        const subtypeName = data?.sample_subtypes?.name || null;
 
-  if (typeId) {
-    let testsQuery = supabase
-      .from('tests')
-      .select(`
-        id, name, code, unit, result_type, display_order,
-        test_specifications(id, min_value, max_value, display_spec)
-      `)
-      .eq('sample_type_id', typeId);
+        if (typeId) {
+          let testsQuery = supabase
+            .from('tests')
+            .select(`
+              id, name, code, unit, result_type, display_order,
+              test_specifications(id, min_value, max_value, display_spec)
+            `)
+            .eq('sample_type_id', typeId);
 
-    if (subtypeName) {
-      // Sample has a registered form (LBD/HBD/IDP) — only show tests
-      // matching that form's code suffix. Confirmed against real data:
-      // BP_AM_LBD, BP_BD_LBD, BP_MC_LBD, BP_pH_LBD all match correctly.
-      testsQuery = testsQuery.or(
-        `code.ilike.%_${subtypeName},and(code.not.ilike.%_HBD,code.not.ilike.%_LBD,code.not.ilike.%_IDP)`
-      );
-    }
+          if (subtypeName) {
+            // Sample has a registered form (LBD/HBD/IDP) — only show tests
+            // matching that form's code suffix. Confirmed against real data:
+            // BP_AM_LBD, BP_BD_LBD, BP_MC_LBD, BP_pH_LBD all match correctly.
+            testsQuery = testsQuery.or(
+              `code.ilike.%_${subtypeName},and(code.not.ilike.%_HBD,code.not.ilike.%_LBD,code.not.ilike.%_IDP)`
+            );
+          }
 
-    const { data: tests } = await testsQuery.order('display_order');
-    const t = tests || [];
-    setAllTests(t);
-    setSelectedIds(t.map(x => x.id));
-  }
-  setStep('confirm');
-} else {
+          const { data: tests } = await testsQuery.order('display_order');
+          const t = tests || [];
+          setAllTests(t);
+          setSelectedIds(t.map(x => x.id));
+        }
+        setStep('confirm');
+      } else {
         // Step 2 — populate existing results
         const iv = {}; const ic = {}; const is_ = {};
         for (const a of assignments) {
@@ -451,6 +464,389 @@ export default function AnalysisPage() {
     </div>
   );
 
+  // ════════════════════════════════════════════════════════
+  // MOBILE / TABLET LAYOUT (<=1024px)
+  // ════════════════════════════════════════════════════════
+  if (isMobile) {
+    return (
+      <div style={{ fontFamily:'inherit', background:'#F8FAFC', minHeight:'100vh', paddingBottom:'90px' }}>
+        <Navbar />
+
+        {/* ── Sticky header strip ── */}
+        <div style={{ position:'sticky', top:0, zIndex:20, background:'#fff', borderBottom:'1px solid #E2E8F0' }}>
+          <div style={{ background:`linear-gradient(135deg,${P},${PM})`, padding:'10px 14px 9px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
+              <button onClick={() => navigate(-1)}
+                style={{ background:'rgba(255,255,255,0.18)', border:'none', borderRadius:'7px', padding:'5px 9px', color:'#fff', fontSize:'12px', fontWeight:700, flexShrink:0 }}>
+                ← Back
+              </button>
+              <div style={{ flex:1, minWidth:0, textAlign:'right' }}>
+                <div style={{ color:'#fff', fontWeight:800, fontSize:'14px', lineHeight:1.25 }}>{sample?.sample_name}</div>
+                <div style={{ color:'#DDD6FE', fontFamily:'monospace', fontSize:'10.5px', fontWeight:700, marginTop:'1px' }}>{sample?.sample_number}</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'8px' }}>
+              <span style={{ background:'rgba(255,255,255,0.2)', color:'#fff', padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:700 }}>{sttCfg.label}</span>
+              {sample?.sample_types?.name && (
+                <span style={{ background:'#fff', color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:700 }}>{sample.sample_types.name}</span>
+              )}
+              {sample?.sample_subtypes?.name && (
+                <span style={{ background:'#FED7AA', color:'#9A3412', padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:800 }}>Form: {sample.sample_subtypes.name}</span>
+              )}
+              {sample?.departments?.name && (
+                <span style={{ background:'#A7F3D0', color:'#065F46', padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:700 }}>{sample.departments.name}</span>
+              )}
+              {oosN > 0 && (
+                <span style={{ background:'#FECACA', color:'#7F1D1D', padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:800 }}>⚠️ {oosN} OOS</span>
+              )}
+              {isCompartmentMode && (
+                <span style={{ background:'#fff', color:PM, padding:'2px 8px', borderRadius:'20px', fontSize:'10px', fontWeight:700 }}>🧪 Compartment</span>
+              )}
+            </div>
+            <button onClick={() => setMobileDetailsOpen(!mobileDetailsOpen)}
+              style={{ marginTop:'8px', background:'rgba(255,255,255,0.14)', border:'none', borderRadius:'7px', padding:'5px 10px', color:'#fff', fontSize:'11px', fontWeight:700, width:'100%' }}>
+              {mobileDetailsOpen ? 'Hide Details ▴' : 'Show Details ▾'}
+            </button>
+          </div>
+
+          {mobileDetailsOpen && (
+            <div style={{ padding:'12px 14px', background:'#FAFBFC', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+              {[
+                ['Date',    sample?.registered_at ? format(new Date(sample.registered_at),'dd/MM/yy HH:mm'):'—'],
+                ['Sampler', sample?.sampler_name || '—'],
+                ['Batch',   sample?.batch_number || '—'],
+                ['Notes',   sample?.notes        || '—'],
+              ].map(([k,v]) => (
+                <div key={k} style={{ background:'#fff', borderRadius:'8px', padding:'6px 10px', border:'1px solid #F1F5F9' }}>
+                  <div style={{ fontSize:'9px', fontWeight:700, color:'#94A3B8', textTransform:'uppercase' }}>{k}</div>
+                  <div style={{ fontSize:'12px', fontWeight:600, color:'#1E293B', wordBreak:'break-word' }}>{v}</div>
+                </div>
+              ))}
+              <button onClick={() => setShowEdit(true)}
+                style={{ gridColumn:'1/3', padding:'9px', background:'#FFF7ED', color:AM, border:'1px solid #FED7AA', borderRadius:'9px', fontSize:'12px', fontWeight:700 }}>
+                ✏️ Correct This Sample
+              </button>
+            </div>
+          )}
+
+          <div style={{ padding:'10px 14px', background:'#fff' }}>
+            <div style={{ fontWeight:800, fontSize:'13px', color:'#0F172A' }}>
+              {step === 'confirm' ? 'Step 1 — Select Tests to Perform' : 'Step 2 — Results Entry'}
+              {step === 'enter' && isCompartmentMode && ` (C1–C${numComp})`}
+            </div>
+            <div style={{ fontSize:'11px', color:'#94A3B8', marginTop:'1px' }}>
+              {step === 'confirm'
+                ? `Tick the tests you'll perform · ${selectedIds.length}/${allTests.length} selected`
+                : `${totalN} tests · max 2 updates per result then locked`}
+            </div>
+          </div>
+        </div>
+
+        {/* ════ STEP 1 — Select tests (mobile cards) ════ */}
+        {step === 'confirm' && (
+          <>
+            {allTests.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'50px 20px' }}>
+                <div style={{ fontSize:'44px', marginBottom:'12px' }}>⚠️</div>
+                <div style={{ fontWeight:700, fontSize:'14px', color:'#374151' }}>No tests configured</div>
+                <div style={{ fontSize:'12px', color:'#94A3B8', marginTop:'6px' }}>
+                  No tests found for "{sample?.sample_types?.name}". Contact your admin.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px' }}>
+                  <span style={{ fontSize:'12px', fontWeight:700, color:'#4C1D95' }}>{selectedIds.length} of {allTests.length} selected</span>
+                  <button type="button"
+                    onClick={() => setSelectedIds(selectedIds.length === allTests.length ? [] : allTests.map(t => t.id))}
+                    style={{ padding:'6px 13px', background:PM, color:'#fff', border:'none', borderRadius:'7px', fontSize:'11.5px', fontWeight:700 }}>
+                    {selectedIds.length === allTests.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+
+                <div style={{ padding:'0 14px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                  {allTests.map(test => {
+                    const spec = test.test_specifications?.[0];
+                    const checked = selectedIds.includes(test.id);
+                    return (
+                      <label key={test.id} onClick={() => setSelectedIds(prev => prev.includes(test.id) ? prev.filter(x=>x!==test.id) : [...prev,test.id])}
+                        style={{ display:'flex', background:'#fff', borderRadius:'12px', overflow:'hidden', border:`1.5px solid ${checked?PM:'#E2E8F0'}` }}>
+                        <div style={{ width:'4px', background: checked?PM:'#E2E8F0', flexShrink:0 }} />
+                        <div style={{ flex:1, display:'flex', alignItems:'center', gap:'11px', padding:'12px 13px' }}>
+                          <input type="checkbox" checked={checked} readOnly style={{ width:'18px', height:'18px', accentColor:PM, flexShrink:0 }} />
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:800, fontSize:'14px', color:'#0F172A' }}>{test.name}</div>
+                            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'3px' }}>
+                              {spec?.display_spec && (
+                                <span style={{ fontSize:'10.5px', color:AM, fontWeight:700, background:'#FFFBEB', padding:'1px 7px', borderRadius:'5px' }}>Spec: {spec.display_spec}</span>
+                              )}
+                              {test.unit && <span style={{ fontSize:'10.5px', color:'#94A3B8' }}>Unit: {test.unit}</span>}
+                            </div>
+                          </div>
+                          {checked && <span style={{ color:GR, fontSize:'17px', flexShrink:0 }}>✓</span>}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <div style={{ position:'sticky', bottom:'70px', padding:'14px', marginTop:'10px', background:'linear-gradient(180deg,transparent,#F8FAFC 25%)' }}>
+              <button onClick={confirmTests} disabled={selectedIds.length===0||confirming}
+                style={{ width:'100%', padding:'14px', background:selectedIds.length===0?'#CBD5E1':`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'12px', fontSize:'14px', fontWeight:800, boxShadow: selectedIds.length===0?'none':'0 4px 14px rgba(107,33,168,0.35)' }}>
+                {confirming ? '⏳ Confirming...' : `✅ Confirm ${selectedIds.length} Test${selectedIds.length!==1?'s':''} — Proceed`}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ════ STEP 2 — Enter results (mobile cards) ════ */}
+        {step === 'enter' && (
+          <>
+            {/* Progress card */}
+            <div style={{ margin:'12px 14px', background:'#fff', borderRadius:'12px', padding:'12px 14px', border:'1px solid #E2E8F0' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', fontWeight:700, color:'#475569', marginBottom:'6px' }}>
+                <span>Progress</span>
+                <span style={{ color:allDone?GR:PM }}>{subN}/{totalN} ({pct}%)</span>
+              </div>
+              <div style={{ background:'#E2E8F0', borderRadius:'4px', height:'6px', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${pct}%`, background:allDone?GR:oosN>0?RD:`linear-gradient(90deg,${P},${PM})`, borderRadius:'4px' }} />
+              </div>
+              <div style={{ display:'flex', gap:'10px', marginTop:'7px', fontSize:'11px', flexWrap:'wrap' }}>
+                <span style={{ color:GR, fontWeight:600 }}>✅ {subN} submitted</span>
+                {filledN > 0 && <span style={{ color:AM, fontWeight:600 }}>✏️ {filledN} filled</span>}
+                {oosN > 0 && <span style={{ color:RD, fontWeight:700 }}>⚠️ {oosN} OOS</span>}
+              </div>
+              {allDone && (
+                <div style={{ marginTop:'8px', background:'#ECFDF5', color:GR, padding:'6px 10px', borderRadius:'8px', fontSize:'11.5px', fontWeight:700, textAlign:'center', border:'1px solid #A7F3D0' }}>
+                  ✅ All Complete
+                </div>
+              )}
+              <button onClick={async () => {
+                const hasResults = Object.keys(subs).length > 0;
+                if (hasResults) { toast.warning('Cannot change tests — results already submitted'); return; }
+                try {
+                  await supabase.from('sample_test_assignments').delete().eq('sample_id', id);
+                  await loadSample(); setStep('confirm');
+                } catch(e) { toast.error('Failed to reset: '+e.message); }
+              }}
+                style={{ marginTop:'8px', width:'100%', padding:'7px', background:'#F5F3FF', color:P, border:`1px solid ${PL}`, borderRadius:'8px', fontSize:'11.5px', fontWeight:700 }}>
+                ← Change Tests
+              </button>
+            </div>
+
+            {/* Compartment count selector */}
+            {isCompartmentMode && (
+              <div style={{ margin:'0 14px 12px', background:'#F5F3FF', borderRadius:'10px', padding:'10px 12px', border:`1px solid ${PL}` }}>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#4C1D95', marginBottom:'6px' }}>NUMBER OF COMPARTMENTS</label>
+                <div style={{ display:'flex', gap:'5px', flexWrap:'wrap' }}>
+                  {[2,3,4,5,6,8,10].map(n => (
+                    <button key={n} type="button" onClick={() => setNumComp(n)}
+                      style={{ padding:'6px 12px', border:`1.5px solid ${numComp===n?PM:PL}`, borderRadius:'7px', background:numComp===n?PM:'#fff', color:numComp===n?'#fff':PM, fontWeight:700, fontSize:'12px' }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Analyst selector */}
+            <div style={{ margin:'0 14px 12px' }}>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#4C1D95', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.4px' }}>Analyst Signature *</label>
+              {!manualAnalyst ? (
+                <>
+                  <select value={analyst} onChange={e => setAnalyst(e.target.value)}
+                    style={{ width:'100%', border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'11px 12px', fontSize:'14px', background:'#fff', color:'#1E293B' }}>
+                    <option value="">— Select analyst —</option>
+                    {staff.map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => { setManualAnalyst(true); setAnalyst(''); }}
+                    style={{ background:'none', border:'none', color:PM, fontSize:'11.5px', fontWeight:600, textDecoration:'underline', padding:'7px 0', display:'block' }}>
+                    + Not in list? Type name manually
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <input type="text" value={analyst} onChange={e => setAnalyst(e.target.value)} autoFocus placeholder="Type analyst full name..."
+                      style={{ flex:1, border:`1.5px solid ${PM}`, borderRadius:'10px', padding:'10px 12px', fontSize:'14px' }} />
+                  </div>
+                  {analyst.trim().length > 1 && (
+                    <button type="button" onClick={async () => {
+                      try {
+                        const res = await api.post('/lookup/staff', { full_name:analyst.trim(), role:'Both' });
+                        const saved = res.data?.staff;
+                        if (saved) setStaff(prev => prev.find(s=>s.full_name===saved.full_name) ? prev : [...prev, saved].sort((a,b)=>a.full_name.localeCompare(b.full_name)));
+                        setManualAnalyst(false);
+                        toast.success(`✅ ${analyst.trim()} saved to analyst list`);
+                      } catch(e) { toast.error('Failed to save: '+(e.response?.data?.error||e.message)); }
+                    }}
+                      style={{ width:'100%', marginTop:'8px', padding:'10px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'12.5px', fontWeight:700 }}>
+                      💾 Save "{analyst.trim()}" to analyst list
+                    </button>
+                  )}
+                  <button type="button" onClick={() => { setManualAnalyst(false); setAnalyst(''); }}
+                    style={{ background:'none', border:'none', color:'#94A3B8', fontSize:'11.5px', fontWeight:600, textDecoration:'underline', padding:'7px 0', display:'block' }}>
+                    ← Back to dropdown without saving
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Test result cards */}
+            <div style={{ padding:'0 14px', display:'flex', flexDirection:'column', gap:'10px' }}>
+              {assignments.map((a) => {
+                const spec    = a.tests?.test_specifications?.[0];
+                const sub     = subs[a.id];
+                const locked  = sub?.locked;
+                const isText  = a.tests?.result_type === 'text';
+                const isExtra = ['Remarks','Action'].includes(a.tests?.name);
+                const isOOS   = sub?.status === 'fail_low' || sub?.status === 'fail_high';
+                const badge   = STATUS_ROW[sub?.status] || null;
+                const storedComp = sub?.value ? parseCompVals(sub.value) : null;
+
+                let liveCompStatus = null;
+                if (isCompartmentMode && !isExtra) {
+                  const cv = compVals[a.id] || {};
+                  const hasAny = Object.values(cv).some(v => v?.trim());
+                  if (hasAny) liveCompStatus = evaluateCompartments(cv, spec);
+                }
+
+                const barColor = isOOS ? RD : (badge?.label === 'PASS' || liveCompStatus?.pass) ? GR : '#E2E8F0';
+
+                return (
+                  <div key={a.id} style={{ display:'flex', background:'#fff', borderRadius:'12px', overflow:'hidden', border:'1px solid #E2E8F0' }}>
+                    <div style={{ width:'4px', background:barColor, flexShrink:0 }} />
+                    <div style={{ flex:1, padding:'12px 14px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontWeight: isExtra?600:800, fontSize:'14px', color: isExtra?'#94A3B8':'#0F172A' }}>{a.tests?.name}</div>
+                          {locked && <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'1px' }}>🔒 Locked</div>}
+                        </div>
+                        {badge && (
+                          <span style={{ background:badge.bg, color:badge.color, padding:'3px 9px', borderRadius:'8px', fontSize:'10px', fontWeight:800 }}>{badge.label}</span>
+                        )}
+                        {!badge && liveCompStatus?.status && (
+                          <span style={{ background:liveCompStatus.pass?'#DCFCE7':'#FEF2F2', color:liveCompStatus.pass?GR:RD, padding:'3px 9px', borderRadius:'8px', fontSize:'10px', fontWeight:800 }}>
+                            {liveCompStatus.pass?'PASS':'OOS'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display:'flex', gap:'10px', marginTop:'3px', fontSize:'11px' }}>
+                        {!isExtra && spec?.display_spec && (
+                          <span style={{ color:AM, fontWeight:700, background:'#FFFBEB', padding:'1px 7px', borderRadius:'5px' }}>Spec: {spec.display_spec}</span>
+                        )}
+                        {a.tests?.unit && <span style={{ color:'#94A3B8' }}>Unit: {a.tests.unit}</span>}
+                      </div>
+
+                      {/* Compartment mode inputs */}
+                      {isCompartmentMode ? (
+                        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginTop:'10px' }}>
+                          {Array.from({ length: numComp }, (_, ci) => {
+                            const cKey = `C${ci+1}`;
+                            const val  = storedComp ? (storedComp[cKey] ?? '') : (compVals[a.id]?.[cKey] ?? '');
+                            const num  = parseFloat(val);
+                            let cellPass = null;
+                            if (val?.trim() && !isNaN(num) && !isExtra) {
+                              if (spec?.min_value != null && num < parseFloat(spec.min_value)) cellPass = false;
+                              else if (spec?.max_value != null && num > parseFloat(spec.max_value)) cellPass = false;
+                              else cellPass = true;
+                            }
+                            if (isExtra && ci > 0) return null;
+                            return (
+                              <div key={cKey} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'2px' }}>
+                                {!isExtra && <span style={{ fontSize:'9px', fontWeight:700, color:'#94A3B8' }}>{cKey}</span>}
+                                <input
+                                  type={isExtra?'text':'number'}
+                                  value={isExtra ? (compVals[a.id]?.['C1']||'') : (compVals[a.id]?.[cKey] ?? '')}
+                                  disabled={locked || !!storedComp}
+                                  onChange={e => setComp(a.id, isExtra?'C1':cKey, e.target.value)}
+                                  placeholder={isExtra?'Type...':'—'}
+                                  style={{
+                                    width: isExtra ? '160px' : '56px',
+                                    border:`1.5px solid ${(locked||storedComp)?'#E2E8F0':cellPass===null?'#E2E8F0':cellPass?'#86EFAC':'#FECACA'}`,
+                                    borderRadius:'7px', padding:'7px 5px', fontSize:'13px',
+                                    background:(locked||storedComp)?'#F8FAFC':'#fff', textAlign: isExtra?'left':'center',
+                                  }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ display:'flex', gap:'8px', marginTop:'10px', alignItems:'center' }}>
+                          <input
+                            ref={el => inputRefs.current[a.id] = el}
+                            type={isText||isExtra?'text':'number'}
+                            value={vals[a.id]||''}
+                            onChange={e => setVals(p=>({...p,[a.id]:e.target.value}))}
+                            onKeyDown={e => { if(e.key==='Enter'&&!locked&&vals[a.id]?.trim()) submitOne(a); }}
+                            disabled={locked}
+                            placeholder={locked?'Locked':isText||isExtra?'Enter text...':'Enter value'}
+                            style={{ flex:1, border:'1.5px solid #E2E8F0', borderRadius:'9px', padding:'10px 12px', fontSize:'15px', background:locked?'#F8FAFC':'#fff', color:'#1E293B' }}
+                          />
+                          {!locked && (
+                            <button onClick={() => submitOne(a)} disabled={saving[a.id] || !vals[a.id]?.trim()}
+                              style={{ padding:'10px 14px', background: vals[a.id]?.trim() ? `linear-gradient(135deg,${P},${PM})` : '#CBD5E1', color:'#fff', border:'none', borderRadius:'9px', fontWeight:700, fontSize:'12.5px', flexShrink:0 }}>
+                              {saving[a.id] ? '...' : sub?.value ? 'Update' : 'Submit'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'8px' }}>
+                        <span style={{ fontSize:'10.5px', color:'#94A3B8' }}>
+                          {sub?.analyst ? `${sub.analyst} · ${sub.time ? format(new Date(sub.time),'HH:mm') : ''}` : '—'}
+                          {sub?.editCount > 0 && !locked && ` · ${2-(sub.editCount||0)} edits left`}
+                        </span>
+                        {!sub?.value && !locked && (
+                          <button onClick={() => removeTest(a.id, a.tests?.name)} disabled={removing===a.id}
+                            style={{ padding:'4px 10px', background:'#FEF2F2', color:RD, border:'1px solid #FECACA', borderRadius:'6px', fontSize:'10.5px', fontWeight:700 }}>
+                            {removing===a.id?'...':'🗑 Remove'}
+                          </button>
+                        )}
+                        {isCompartmentMode && !locked && !storedComp && (
+                          <button onClick={() => submitOne(a)} disabled={saving[a.id]}
+                            style={{ padding:'5px 12px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'7px', fontSize:'11px', fontWeight:700 }}>
+                            {saving[a.id] ? '...' : '✅ Submit'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Submit All footer */}
+            <div style={{ position:'sticky', bottom:'70px', padding:'14px', marginTop:'10px', background:'linear-gradient(180deg,transparent,#F8FAFC 25%)' }}>
+              <button onClick={submitAll} disabled={savingAll || !canAll}
+                style={{ width:'100%', padding:'14px', background:canAll?'linear-gradient(135deg,#0D9488,#059669)':'#CBD5E1', color:'#fff', border:'none', borderRadius:'12px', fontSize:'14px', fontWeight:800, boxShadow: canAll?'0 4px 14px rgba(5,150,105,0.35)':'none' }}>
+                {savingAll ? '⏳ Saving...' : '✅ Submit All Results'}
+              </button>
+              {!analyst.trim() && (
+                <p style={{ fontSize:'11px', color:'#94A3B8', textAlign:'center', margin:'6px 0 0' }}>Select analyst above first</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {showEdit && sample && (
+          <SampleEditModal
+            sample={sample}
+            onClose={() => setShowEdit(false)}
+            onSaved={() => { setShowEdit(false); loadSample(); }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════
+  // DESKTOP LAYOUT (unchanged)
+  // ════════════════════════════════════════════════════════
   return (
     <div style={{ height:'100vh', background:'#F8FAFC', display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <Navbar />
@@ -482,31 +878,31 @@ export default function AnalysisPage() {
             )}
 
             {/* Status badges */}
-<div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'12px' }}>
-  <span style={{ background:sttCfg.bg, color:sttCfg.color, padding:'2px 9px', borderRadius:'20px', fontSize:'11px', fontWeight:'700' }}>
-    {sttCfg.label}
-  </span>
-  {sample?.sample_types?.name && (
-    <span style={{ background:PL, color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
-      {sample.sample_types.name}
-    </span>
-  )}
-  {sample?.sample_subtypes?.name && (
-    <span style={{ background:'#FFF7ED', color:'#C2410C', padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'700', border:'1px solid #FED7AA' }}>
-      Form: {sample.sample_subtypes.name}
-    </span>
-  )}
-  {sample?.departments?.name && (
-    <span style={{ background:'#ECFDF5', color:GR, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
-      {sample.departments.name}
-    </span>
-  )}
-  {oosN > 0 && (
-    <span style={{ background:'#FEF2F2', color:RD, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'800', border:'1px solid #FECACA' }}>
-      ⚠️ {oosN} OOS
-    </span>
-  )}
-</div>
+            <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'12px' }}>
+              <span style={{ background:sttCfg.bg, color:sttCfg.color, padding:'2px 9px', borderRadius:'20px', fontSize:'11px', fontWeight:'700' }}>
+                {sttCfg.label}
+              </span>
+              {sample?.sample_types?.name && (
+                <span style={{ background:PL, color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
+                  {sample.sample_types.name}
+                </span>
+              )}
+              {sample?.sample_subtypes?.name && (
+                <span style={{ background:'#FFF7ED', color:'#C2410C', padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'700', border:'1px solid #FED7AA' }}>
+                  Form: {sample.sample_subtypes.name}
+                </span>
+              )}
+              {sample?.departments?.name && (
+                <span style={{ background:'#ECFDF5', color:GR, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
+                  {sample.departments.name}
+                </span>
+              )}
+              {oosN > 0 && (
+                <span style={{ background:'#FEF2F2', color:RD, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'800', border:'1px solid #FECACA' }}>
+                  ⚠️ {oosN} OOS
+                </span>
+              )}
+            </div>
 
             {/* Progress — step 2 only */}
             {step === 'enter' && (
@@ -845,8 +1241,6 @@ export default function AnalysisPage() {
                             return (
                               <td key={cKey} style={{ padding:'6px 6px', borderBottom:'1px solid #F1F5F9', borderLeft:'1px solid #F1F5F9', textAlign:'center' }}>
                                 {isExtra ? (
-                                  // Remarks/Action: single text cell spanning not possible in table,
-                                  // so show read-only if stored, input if not
                                   ci === 0 ? (
                                     locked || storedComp ? (
                                       <span style={{ fontSize:'11px', color:'#475569' }}>{val || '—'}</span>
