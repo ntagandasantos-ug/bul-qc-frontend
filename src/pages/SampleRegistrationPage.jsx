@@ -639,6 +639,7 @@ export default function SampleRegistrationPage() {
                       <label style={LBL}>Sample Type *</label>
                       <select value={s.typeId} onChange={e => {
                         const t = (s.types||[]).find(x=>x.id===e.target.value);
+                        console.log('DEBUG row', idx, 'selected type:', t, 'requires_subtype:', t?.requires_subtype, 's.types:', s.types);
                         updateBulk(idx,'typeId',e.target.value);
                         updateBulk(idx,'needsSub',t?.requires_subtype||false);
                         updateBulk(idx,'subtypeId','');
