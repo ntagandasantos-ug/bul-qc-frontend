@@ -214,12 +214,15 @@ export default function SampleRegistrationPage() {
   };
 
   const addBulkRow = () => {
-    if (bulkSamples.length >= 20) { toast.warning('Maximum 20 samples at once'); return; }
-    setBulkSamples(prev => {
-      const last = prev[prev.length-1];
-      return [...prev, { ...emptySample(), id:Date.now()+Math.random(), cats:last.cats||[], catId:last.catId, types:last.types||[] }];
-    });
-  };
+  if (bulkSamples.length >= 20) { toast.warning('Maximum 20 samples at once'); return; }
+  setBulkSamples(prev => {
+    const last = prev[prev.length-1];
+    // Only inherit the categories list (safe — same dept, no fetch needed).
+    // Do NOT inherit catId/types/subtypes: that skips the fetch that loads
+    // subtypes, which is why Form never appeared on row 2+.
+    return [...prev, { ...emptySample(), id:Date.now()+Math.random(), cats:last.cats||[] }];
+  });
+};
 
   const removeBulkRow = (idx) => {
     if (bulkSamples.length === 1) { toast.warning('Need at least one sample'); return; }
@@ -352,7 +355,6 @@ export default function SampleRegistrationPage() {
       return true;
     });
   };
-  console.log('DEBUG bulkSamples:', JSON.stringify(bulkSamples.map(s => ({ id:s.id, catId:s.catId, typeId:s.typeId, needsSub:s.needsSub, typesCount:(s.types||[]).length, subtypesCount:(s.subtypes||[]).length }))));
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
@@ -640,7 +642,6 @@ export default function SampleRegistrationPage() {
                       <label style={LBL}>Sample Type *</label>
                       <select value={s.typeId} onChange={e => {
                         const t = (s.types||[]).find(x=>x.id===e.target.value);
-                        console.log('DEBUG row', idx, 'selected type:', t, 'requires_subtype:', t?.requires_subtype, 's.types:', s.types);
                         updateBulk(idx,'typeId',e.target.value);
                         updateBulk(idx,'needsSub',t?.requires_subtype||false);
                         updateBulk(idx,'subtypeId','');
