@@ -55,6 +55,13 @@ export default function Navbar() {
   const navigate  = useNavigate();
   const location  = useLocation();
 
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 1024 : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const [showReports,  setShowReports]  = useState(false);
   const [showAdmin,    setShowAdmin]    = useState(false);
   const [showAvatar,   setShowAvatar]   = useState(false);
@@ -114,30 +121,40 @@ export default function Navbar() {
   );
 
   const DropMenu = ({ items, onClose }) => (
-    <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, background:'#fff', borderRadius:'14px', boxShadow:'0 12px 40px rgba(107,33,168,0.22)', border:`1.5px solid ${PL}`, zIndex:300, minWidth:'360px', overflow:'hidden' }}>
-      {items.map((item,i) => (
-        <button key={i} onClick={() => { navigate(item.path); onClose(); }}
-          style={{ display:'flex', alignItems:'flex-start', gap:'12px', width:'100%', padding:'11px 16px', border:'none', borderBottom:i<items.length-1?`1px solid ${PL}`:'none', background:'#fff', cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'background 0.12s' }}
-          onMouseEnter={e => e.currentTarget.style.background='#F5F3FF'}
-          onMouseLeave={e => e.currentTarget.style.background='#fff'}
-        >
-          <span style={{ fontSize:'19px', flexShrink:0, marginTop:'1px' }}>{item.icon}</span>
-          <div style={{ flex:1 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
-              <span style={{ fontWeight:'700', fontSize:'13px', color:'#1F2937' }}>{item.label}</span>
-              {item.badge && (
-                <span style={{ fontSize:'9px', fontWeight:'800', padding:'1px 6px', borderRadius:'6px', background:item.badge==='New'?'#FEF9C3':'#EDE9FE', color:item.badge==='New'?'#854D0E':P, border:`1px solid ${item.badge==='New'?'#FDE68A':PL}` }}>
-                  {item.badge}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize:'11px', color:'#6B7280', marginTop:'2px', lineHeight:1.4 }}>{item.sub}</div>
+  <div style={isMobile ? {
+    position:'fixed', top:'56px', left:'8px', right:'8px',
+    background:'#fff', borderRadius:'14px',
+    boxShadow:'0 12px 40px rgba(107,33,168,0.3)', border:`1.5px solid ${PL}`,
+    zIndex:9999, maxHeight:'80vh', overflowY:'auto',
+  } : {
+    position:'absolute', top:'calc(100% + 6px)', left:0,
+    background:'#fff', borderRadius:'14px',
+    boxShadow:'0 12px 40px rgba(107,33,168,0.22)', border:`1.5px solid ${PL}`,
+    zIndex:300, minWidth:'360px', overflow:'hidden',
+  }}>
+    {items.map((item,i) => (
+      <button key={i} onClick={() => { navigate(item.path); onClose(); }}
+        style={{ display:'flex', alignItems:'flex-start', gap:'12px', width:'100%', padding:'11px 16px', border:'none', borderBottom:i<items.length-1?`1px solid ${PL}`:'none', background:'#fff', cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'background 0.12s' }}
+        onMouseEnter={e => e.currentTarget.style.background='#F5F3FF'}
+        onMouseLeave={e => e.currentTarget.style.background='#fff'}
+      >
+        <span style={{ fontSize:'19px', flexShrink:0, marginTop:'1px' }}>{item.icon}</span>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
+            <span style={{ fontWeight:'700', fontSize:'13px', color:'#1F2937' }}>{item.label}</span>
+            {item.badge && (
+              <span style={{ fontSize:'9px', fontWeight:'800', padding:'1px 6px', borderRadius:'6px', background:item.badge==='New'?'#FEF9C3':'#EDE9FE', color:item.badge==='New'?'#854D0E':P, border:`1px solid ${item.badge==='New'?'#FDE68A':PL}` }}>
+                {item.badge}
+              </span>
+            )}
           </div>
-          <span style={{ fontSize:'12px', color:'#9CA3AF', flexShrink:0, marginTop:'3px' }}>→</span>
-        </button>
-      ))}
-    </div>
-  );
+          <div style={{ fontSize:'11px', color:'#6B7280', marginTop:'2px', lineHeight:1.4 }}>{item.sub}</div>
+        </div>
+        <span style={{ fontSize:'12px', color:'#9CA3AF', flexShrink:0, marginTop:'3px' }}>→</span>
+      </button>
+    ))}
+  </div>
+);
 
   return (
     <>
@@ -212,7 +229,17 @@ export default function Navbar() {
             {avatar ? <img src={avatar} alt="av" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : initials}
           </div>
           {showAvatar && (
-            <div style={{ position:'absolute', right:0, top:'40px', background:'#fff', borderRadius:'12px', boxShadow:'0 8px 24px rgba(107,33,168,0.2)', border:`1.5px solid ${PL}`, minWidth:'200px', zIndex:300, overflow:'hidden' }}>
+  <div style={isMobile ? {
+    position:'fixed', top:'56px', right:'8px', left:'8px',
+    background:'#fff', borderRadius:'12px',
+    boxShadow:'0 8px 24px rgba(107,33,168,0.3)', border:`1.5px solid ${PL}`,
+    zIndex:9999, overflow:'hidden',
+  } : {
+    position:'absolute', right:0, top:'40px',
+    background:'#fff', borderRadius:'12px',
+    boxShadow:'0 8px 24px rgba(107,33,168,0.2)', border:`1.5px solid ${PL}`,
+    minWidth:'200px', zIndex:300, overflow:'hidden',
+  }}>
               <div style={{ padding:'10px 14px', background:'#F5F3FF', borderBottom:`1px solid ${PL}` }}>
                 <p style={{ fontWeight:'700', color:'#1F2937', margin:0, fontSize:'13px' }}>{user?.full_name}</p>
                 <p style={{ fontSize:'11px', color:PM, margin:'2px 0 0' }}>{role}</p>
@@ -233,4 +260,4 @@ export default function Navbar() {
       {showAssign && <AssignSampleModal onClose={() => setShowAssign(false)} />}
     </>
   );
-}
+};

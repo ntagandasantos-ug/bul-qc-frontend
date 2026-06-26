@@ -695,7 +695,7 @@ export default function InventoryPage() {
 
       {isMobile && (
         <button onClick={() => setMobileSheetOpen(true)}
-          style={{ position:'fixed', bottom:'24px', right:'20px', width:'56px', height:'56px', borderRadius:'50%', background:`linear-gradient(135deg,${P},${PM})`, border:'none', color:'#fff', fontSize:'26px', boxShadow:'0 6px 20px rgba(107,33,168,0.4)', cursor:'pointer', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          style={{ position:'fixed', bottom:'90px', right:'20px', width:'56px', height:'56px', borderRadius:'50%', background:`linear-gradient(135deg,${P},${PM})`, border:'none', color:'#fff', fontSize:'26px', boxShadow:'0 6px 20px rgba(107,33,168,0.4)', cursor:'pointer', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center' }}>
           +
         </button>
       )}

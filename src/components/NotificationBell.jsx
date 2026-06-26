@@ -34,6 +34,12 @@ export default function NotificationBell({ departmentId }) {
   const [loading, setLoading] = useState(false);
   const dropRef               = useRef(null);
 
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 1024 : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const load = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
@@ -134,14 +140,20 @@ export default function NotificationBell({ departmentId }) {
       </button>
 
       {/* Dropdown */}
-      {open && (
-        <div style={{
-          position:'absolute', right:0, top:'44px',
-          width:'340px', maxWidth:'90vw',
-          background:'#fff', borderRadius:'14px',
-          boxShadow:'0 8px 32px rgba(107,33,168,0.2)',
-          border:`1.5px solid ${PL}`, zIndex:300, overflow:'hidden',
-        }}>
+{open && (
+  <div style={isMobile ? {
+    position:'fixed', top:'56px', left:'8px', right:'8px',
+    width:'auto', maxWidth:'none',
+    background:'#fff', borderRadius:'14px',
+    boxShadow:'0 8px 32px rgba(107,33,168,0.3)',
+    border:`1.5px solid ${PL}`, zIndex:9999, overflow:'hidden',
+  } : {
+    position:'absolute', right:0, top:'44px',
+    width:'340px', maxWidth:'90vw',
+    background:'#fff', borderRadius:'14px',
+    boxShadow:'0 8px 32px rgba(107,33,168,0.2)',
+    border:`1.5px solid ${PL}`, zIndex:300, overflow:'hidden',
+  }}>
           {/* Header */}
           <div style={{
             padding:'12px 16px',
