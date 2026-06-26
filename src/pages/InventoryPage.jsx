@@ -104,10 +104,7 @@ export default function InventoryPage() {
       }
 
       if (showLow) {
-        data = data.filter(item => {
-          const main = (item.inventory_stock||[]).find(s => s.location === 'MAIN_LAB');
-          return (main?.quantity || 0) <= item.reorder_level;
-        });
+        data = data.filter(item => item.is_low_stock === true);
       }
 
       setItems(data);
