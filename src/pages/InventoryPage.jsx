@@ -876,10 +876,11 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
   const lbl2 = { display:'block', fontSize:'11px', fontWeight:'700', color:'#4C1D95', marginBottom:'4px' };
   const isChemical_ = ['SOLID_CHEM','LIQUID_CHEM','INDICATORS','PH_BUFFER'].includes(catCode);
   const hasInUse_   = ['GLASSWARE','UTILITIES','LOGBOOKS'].includes(catCode);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 1024;
 
   return (
-    <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#fff', borderRadius:'18px', maxWidth:'680px', width:'100%', maxHeight:'92vh', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column' }}>
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500, display:'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent:'center', padding: isMobile ? 0 : '16px' }}>
+      <div style={{ background:'#fff', borderRadius: isMobile ? '20px 20px 0 0' : '18px', maxWidth: isMobile ? '100%' : '680px', width:'100%', maxHeight: isMobile ? '85vh' : '92vh', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column' }}>
         <div style={{ background:`linear-gradient(135deg,#6B21A8,#7C3AED)`, padding:'16px 22px', color:'#fff', flexShrink:0 }}>
           <div style={{ fontWeight:'900', fontSize:'16px' }}>{item?'Edit':'Add'} {catName} Item</div>
         </div>
@@ -936,13 +937,13 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
             <div style={{ gridColumn:'1/3', ...fld2 }}><label style={lbl2}>Comments / Remarks</label><textarea value={form.comments||''} onChange={e=>set('comments',e.target.value)} style={{ ...inp2, minHeight:'60px', resize:'vertical' }}/></div>
           </div>
         </div>
-        <div style={{ padding:'14px 24px', borderTop:`1.5px solid #EDE9FE`, background:'#F9FAFB', display:'flex', gap:'10px', flexShrink:0 }}>
-          <button onClick={()=>onSave(form)} disabled={!form.item_name.trim()}
-            style={{ flex:1, padding:'11px', background:!form.item_name.trim()?'#A78BFA':`linear-gradient(135deg,#6B21A8,#7C3AED)`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700', cursor:!form.item_name.trim()?'not-allowed':'pointer', fontFamily:'inherit' }}>
-            {item?'✅ Update Item':'✅ Add Item'}
-          </button>
-          <button onClick={onClose} style={{ flex:1, padding:'11px', background:'#F3F4F6', color:'#374151', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
-        </div>
+        <div style={{ padding: isMobile ? '14px 24px calc(14px + 80px)' : '14px 24px', borderTop:`1.5px solid #EDE9FE`, background:'#F9FAFB', display:'flex', gap:'10px', flexShrink:0 }}>
+  <button onClick={()=>onSave(form)} disabled={!form.item_name.trim()}
+    style={{ flex:1, padding:'11px', background:!form.item_name.trim()?'#A78BFA':`linear-gradient(135deg,#6B21A8,#7C3AED)`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700', cursor:!form.item_name.trim()?'not-allowed':'pointer', fontFamily:'inherit' }}>
+    {item?'✅ Update Item':'✅ Add Item'}
+  </button>
+  <button onClick={onClose} style={{ flex:1, padding:'11px', background:'#F3F4F6', color:'#374151', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
+</div>
       </div>
     </div>
   );
