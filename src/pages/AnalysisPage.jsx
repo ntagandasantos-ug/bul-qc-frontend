@@ -205,23 +205,35 @@ export default function AnalysisPage() {
       const isCompMode  = COMPARTMENT_TYPE_CODES.includes(data?.sample_types?.code || '');
 
       if (assignments.length === 0) {
-        // Step 1 — load available tests
-        const typeId = data?.sample_types?.id;
-        if (typeId) {
-          const { data: tests } = await supabase
-            .from('tests')
-            .select(`
-              id, name, code, unit, result_type, display_order,
-              test_specifications(id, min_value, max_value, display_spec)
-            `)
-            .eq('sample_type_id', typeId)
-            .order('display_order');
-          const t = tests || [];
-          setAllTests(t);
-          setSelectedIds(t.map(x => x.id));
-        }
-        setStep('confirm');
-      } else {
+  // Step 1 — load available tests
+  const typeId = data?.sample_types?.id;
+  const subtypeName = data?.sample_subtypes?.name || null;
+
+  if (typeId) {
+    let testsQuery = supabase
+      .from('tests')
+      .select(`
+        id, name, code, unit, result_type, display_order,
+        test_specifications(id, min_value, max_value, display_spec)
+      `)
+      .eq('sample_type_id', typeId);
+
+    if (subtypeName) {
+      // Sample has a registered form (LBD/HBD/IDP) — only show tests
+      // matching that form's code suffix. Confirmed against real data:
+      // BP_AM_LBD, BP_BD_LBD, BP_MC_LBD, BP_pH_LBD all match correctly.
+      testsQuery = testsQuery.or(
+        `code.ilike.%_${subtypeName},and(code.not.ilike.%_HBD,code.not.ilike.%_LBD,code.not.ilike.%_IDP)`
+      );
+    }
+
+    const { data: tests } = await testsQuery.order('display_order');
+    const t = tests || [];
+    setAllTests(t);
+    setSelectedIds(t.map(x => x.id));
+  }
+  setStep('confirm');
+} else {
         // Step 2 — populate existing results
         const iv = {}; const ic = {}; const is_ = {};
         for (const a of assignments) {
