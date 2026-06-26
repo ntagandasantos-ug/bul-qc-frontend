@@ -482,26 +482,31 @@ export default function AnalysisPage() {
             )}
 
             {/* Status badges */}
-            <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'12px' }}>
-              <span style={{ background:sttCfg.bg, color:sttCfg.color, padding:'2px 9px', borderRadius:'20px', fontSize:'11px', fontWeight:'700' }}>
-                {sttCfg.label}
-              </span>
-              {sample?.sample_types?.name && (
-                <span style={{ background:PL, color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
-                  {sample.sample_types.name}
-                </span>
-              )}
-              {sample?.departments?.name && (
-                <span style={{ background:'#ECFDF5', color:GR, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
-                  {sample.departments.name}
-                </span>
-              )}
-              {oosN > 0 && (
-                <span style={{ background:'#FEF2F2', color:RD, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'800', border:'1px solid #FECACA' }}>
-                  ⚠️ {oosN} OOS
-                </span>
-              )}
-            </div>
+<div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'12px' }}>
+  <span style={{ background:sttCfg.bg, color:sttCfg.color, padding:'2px 9px', borderRadius:'20px', fontSize:'11px', fontWeight:'700' }}>
+    {sttCfg.label}
+  </span>
+  {sample?.sample_types?.name && (
+    <span style={{ background:PL, color:P, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
+      {sample.sample_types.name}
+    </span>
+  )}
+  {sample?.sample_subtypes?.name && (
+    <span style={{ background:'#FFF7ED', color:'#C2410C', padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'700', border:'1px solid #FED7AA' }}>
+      Form: {sample.sample_subtypes.name}
+    </span>
+  )}
+  {sample?.departments?.name && (
+    <span style={{ background:'#ECFDF5', color:GR, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'600' }}>
+      {sample.departments.name}
+    </span>
+  )}
+  {oosN > 0 && (
+    <span style={{ background:'#FEF2F2', color:RD, padding:'2px 8px', borderRadius:'20px', fontSize:'11px', fontWeight:'800', border:'1px solid #FECACA' }}>
+      ⚠️ {oosN} OOS
+    </span>
+  )}
+</div>
 
             {/* Progress — step 2 only */}
             {step === 'enter' && (
