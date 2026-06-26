@@ -2,6 +2,8 @@
 // FILE: frontend/bul-qc-app/src/pages/InventoryPage.jsx
 // Full laboratory inventory management system
 // 7 categories · stock per location · export · breakage
+// Desktop: original table view (unchanged)
+// Mobile/Tablet (<=1024px): card-based responsive layout
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -47,6 +49,15 @@ const isChemical = (code) => ['SOLID_CHEM','LIQUID_CHEM','INDICATORS','PH_BUFFER
 
 export default function InventoryPage() {
   const { user } = useAuth();
+
+  // ── Responsive breakpoint detection ──────────────────────
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 1024 : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const [activeCat,  setActiveCat]  = useState('SOLID_CHEM');
   const [items,      setItems]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -68,6 +79,11 @@ export default function InventoryPage() {
   const [toast,        setToast]        = useState(null);
   const [saving,       setSaving]       = useState(false);
 
+  // Mobile-only UI state
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [mobileSheetOpen,  setMobileSheetOpen]  = useState(false);
+  const [expandedCard,     setExpandedCard]     = useState(null);
+
   const showToast = (msg, type='success') => {
     setToast({msg,type});
     setTimeout(()=>setToast(null),4000);
@@ -79,7 +95,6 @@ export default function InventoryPage() {
       const res = await api.get('/inventory/items');
       let data = res.data?.items || [];
 
-      // Filter by the active category's name (matches inventory_full_status.category_name)
       const catName = CATS.find(c => c.code === activeCat)?.name;
       if (catName) {
         data = data.filter(item => item.category_name === catName);
@@ -115,7 +130,6 @@ export default function InventoryPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime
   useEffect(() => {
     const sub = supabase.channel('inventory_live')
       .on('postgres_changes', { event:'*', schema:'public', table:'inventory_stock' }, () => load())
@@ -123,23 +137,21 @@ export default function InventoryPage() {
     return () => sub.unsubscribe();
   }, [load]);
 
-  // Stock helper
   const getStock = (item, location) => {
-  const map = {
-    CHEMICAL_STORE: { quantity: item.chemical_store_qty, in_stock: item.chemical_store_qty, in_use: 0 },
-    MAIN_LAB:       { quantity: item.main_lab_qty,       in_stock: item.main_lab_not_in_use, in_use: item.main_lab_in_use },
-    DET_LAB:        { quantity: item.det_lab_qty,        in_stock: item.det_lab_qty - (item.det_lab_in_use||0), in_use: item.det_lab_in_use },
+    const map = {
+      CHEMICAL_STORE: { quantity: item.chemical_store_qty, in_stock: item.chemical_store_qty, in_use: 0 },
+      MAIN_LAB:       { quantity: item.main_lab_qty,       in_stock: item.main_lab_not_in_use, in_use: item.main_lab_in_use },
+      DET_LAB:        { quantity: item.det_lab_qty,        in_stock: item.det_lab_qty - (item.det_lab_in_use||0), in_use: item.det_lab_in_use },
+    };
+    const s = map[location];
+    return s || { quantity:0, in_stock:0, in_use:0 };
   };
-  const s = map[location];
-  return s || { quantity:0, in_stock:0, in_use:0 };
-};
 
   const totalStock = (item) =>
     (item.chemical_store_qty||0) + (item.main_lab_qty||0) + (item.det_lab_qty||0);
 
   const isLow = (item) => item.is_low_stock === true;
 
-  // EXPORT EXCEL
   const exportExcel = () => {
     const catName = CATS.find(c=>c.code===activeCat)?.name || activeCat;
     const rows = [];
@@ -180,7 +192,6 @@ export default function InventoryPage() {
     showToast('✅ Excel exported');
   };
 
-  // EXPORT PDF
   const exportPDF = async () => {
     try {
       const catName = CATS.find(c=>c.code===activeCat)?.name || activeCat;
@@ -188,7 +199,6 @@ export default function InventoryPage() {
       const { default: autoTable } = await import('jspdf-autotable');
       const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
 
-      // Header
       doc.setFillColor(107,33,168);
       doc.rect(0,0,297,22,'F');
       doc.setTextColor(255,255,255);
@@ -238,27 +248,27 @@ export default function InventoryPage() {
     }
   };
 
-  // Unique origins for filter
   const origins = [...new Set(items.map(i=>i.country_of_origin).filter(Boolean))].sort();
   const cat = CATS.find(c=>c.code===activeCat);
   const lowCount = items.filter(isLow).length;
+  const anyFilterActive = search || filterOrig || filterLoc !== 'ALL' || showLow;
 
   const inp = { border:`1.5px solid ${PL}`, borderRadius:'8px', padding:'8px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#111827', outline:'none', boxSizing:'border-box', width:'100%' };
   const sel = { ...inp, cursor:'pointer', appearance:'none', backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237C3AED' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat:'no-repeat', backgroundPosition:'right 9px center', paddingRight:'28px' };
 
   return (
-    <div style={{ minHeight:'100vh', background:'#F5F3FF', paddingBottom:'56px' }}>
+    <div style={{ minHeight:'100vh', background:'#F5F3FF', paddingBottom: isMobile ? '90px' : '56px' }}>
       <Navbar />
 
       {toast && (
-        <div style={{ position:'fixed', top:'70px', right:'16px', zIndex:500, background:toast.type==='error'?'#FEF2F2':'#F0FDF4', border:`1.5px solid ${toast.type==='error'?'#FECACA':'#86EFAC'}`, borderRadius:'12px', padding:'12px 18px', color:toast.type==='error'?RD:GR, fontSize:'13px', fontWeight:'700', boxShadow:'0 4px 16px rgba(0,0,0,0.1)', zIndex:600 }}>
+        <div style={{ position:'fixed', top:'70px', right:'16px', left: isMobile ? '16px' : 'auto', zIndex:600, background:toast.type==='error'?'#FEF2F2':'#F0FDF4', border:`1.5px solid ${toast.type==='error'?'#FECACA':'#86EFAC'}`, borderRadius:'12px', padding:'12px 18px', color:toast.type==='error'?RD:GR, fontSize:'13px', fontWeight:'700', boxShadow:'0 4px 16px rgba(0,0,0,0.1)' }}>
           {toast.msg}
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'230px 1fr', minHeight:'calc(100vh - 110px)' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '230px 1fr', minHeight:'calc(100vh - 110px)' }}>
 
-        {/* ── LEFT SIDEBAR ── */}
+        {!isMobile && (
         <div style={{ background:'#fff', borderRight:`1.5px solid ${PL}`, padding:'16px 12px', overflowY:'auto' }}>
           <div style={{ fontSize:'11px', fontWeight:'800', color:'#9CA3AF', letterSpacing:'1px', marginBottom:'10px', paddingLeft:'6px' }}>
             INVENTORY CATEGORIES
@@ -308,84 +318,244 @@ export default function InventoryPage() {
             </button>
           </div>
         </div>
+        )}
 
-        {/* ── MAIN AREA ── */}
-        <div style={{ padding:'16px 18px', overflowY:'auto' }}>
+        <div style={{ padding: isMobile ? '12px 12px' : '16px 18px', overflowY:'auto' }}>
 
-          {/* Category header */}
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
+          {isMobile && (
+            <div style={{ display:'flex', gap:'8px', overflowX:'auto', WebkitOverflowScrolling:'touch', marginBottom:'12px', paddingBottom:'4px' }}>
+              {CATS.map(c => {
+                const active = activeCat === c.code;
+                return (
+                  <button key={c.code} onClick={() => { setActiveCat(c.code); setSearch(''); setFilterOrig(''); setFilterLoc('ALL'); setShowLow(false); }}
+                    style={{ flexShrink:0, display:'flex', alignItems:'center', gap:'6px', padding:'7px 13px', borderRadius:'20px', border:'none', background: active?`linear-gradient(135deg,${P},${PM})`:'#fff', color: active?'#fff':'#5B21B6', fontSize:'12.5px', fontWeight:700, whiteSpace:'nowrap', cursor:'pointer', boxShadow: active?'none':`0 0 0 1px ${PL}` }}>
+                    <span style={{ fontSize:'14px' }}>{c.icon}</span>{c.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ display:'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent:'space-between', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-              <div style={{ width:'48px', height:'48px', borderRadius:'12px', background:cat?.light, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'26px', border:`1.5px solid ${cat?.color}33` }}>
-                {cat?.icon}
-              </div>
+              {!isMobile && (
+                <div style={{ width:'48px', height:'48px', borderRadius:'12px', background:cat?.light, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'26px', border:`1.5px solid ${cat?.color}33` }}>
+                  {cat?.icon}
+                </div>
+              )}
               <div>
-                <h2 style={{ fontSize:'18px', fontWeight:'900', color:'#1F2937', margin:'0 0 2px' }}>{cat?.name}</h2>
+                <h2 style={{ fontSize: isMobile ? '16px' : '18px', fontWeight:'900', color:'#1F2937', margin:'0 0 2px' }}>{cat?.name}</h2>
                 <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>
                   {items.length} item(s) · {lowCount > 0 && <span style={{ color:RD, fontWeight:'700' }}>{lowCount} below reorder level</span>}
                 </p>
               </div>
             </div>
 
-            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            {!isMobile && (
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                <button onClick={()=>setAddModal(true)}
+                  style={{ padding:'8px 16px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  + Add Item
+                </button>
+                <button onClick={exportExcel} disabled={items.length===0}
+                  style={{ padding:'8px 14px', background:'linear-gradient(135deg,#16A34A,#15803D)', color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  📊 Excel
+                </button>
+                <button onClick={exportPDF} disabled={items.length===0}
+                  style={{ padding:'8px 14px', background:'linear-gradient(135deg,#DC2626,#B91C1C)', color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  📄 PDF
+                </button>
+                <button onClick={() => window.print()}
+                  style={{ padding:'8px 14px', background:'#fff', color:P, border:`1.5px solid ${PL}`, borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  🖨 Print
+                </button>
+              </div>
+            )}
+
+            {isMobile && (
               <button onClick={()=>setAddModal(true)}
-                style={{ padding:'8px 16px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                style={{ padding:'8px 14px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
                 + Add Item
-              </button>
-              <button onClick={exportExcel} disabled={items.length===0}
-                style={{ padding:'8px 14px', background:'linear-gradient(135deg,#16A34A,#15803D)', color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-                📊 Excel
-              </button>
-              <button onClick={exportPDF} disabled={items.length===0}
-                style={{ padding:'8px 14px', background:'linear-gradient(135deg,#DC2626,#B91C1C)', color:'#fff', border:'none', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-                📄 PDF
-              </button>
-              <button onClick={() => window.print()}
-                style={{ padding:'8px 14px', background:'#fff', color:P, border:`1.5px solid ${PL}`, borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-                🖨 Print
-              </button>
-            </div>
-          </div>
-
-          {/* Filter bar */}
-          <div style={{ background:'#fff', borderRadius:'12px', border:`1.5px solid ${PL}`, padding:'12px 14px', marginBottom:'14px', display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
-            <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder={`🔍 Search ${cat?.name}...`}
-              style={{ ...inp, flex:2, minWidth:'180px', cursor:'text' }}/>
-
-            <select value={filterLoc} onChange={e=>setFilterLoc(e.target.value)} style={{ ...sel, flex:1, minWidth:'140px' }}>
-              <option value="ALL">All Locations</option>
-              {LOCS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
-            </select>
-
-            <select value={filterOrig} onChange={e=>setFilterOrig(e.target.value)} style={{ ...sel, flex:1, minWidth:'140px' }}>
-              <option value="">All Origins</option>
-              {origins.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-
-            <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', fontWeight:'600', color:RD, cursor:'pointer', whiteSpace:'nowrap' }}>
-              <input type="checkbox" checked={showLow} onChange={e=>setShowLow(e.target.checked)} style={{ accentColor:RD }}/>
-              Low Stock Only
-            </label>
-
-            {(search||filterOrig||filterLoc!=='ALL'||showLow) && (
-              <button onClick={()=>{setSearch('');setFilterOrig('');setFilterLoc('ALL');setShowLow(false);}}
-                style={{ padding:'6px 12px', border:`1px solid ${PL}`, borderRadius:'8px', background:'#F5F3FF', color:P, fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-                ✕ Clear
               </button>
             )}
           </div>
 
-          {/* Items table */}
+          {!isMobile && (
+            <div style={{ background:'#fff', borderRadius:'12px', border:`1.5px solid ${PL}`, padding:'12px 14px', marginBottom:'14px', display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+                placeholder={`🔍 Search ${cat?.name}...`}
+                style={{ ...inp, flex:2, minWidth:'180px', cursor:'text' }}/>
+
+              <select value={filterLoc} onChange={e=>setFilterLoc(e.target.value)} style={{ ...sel, flex:1, minWidth:'140px' }}>
+                <option value="ALL">All Locations</option>
+                {LOCS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
+              </select>
+
+              <select value={filterOrig} onChange={e=>setFilterOrig(e.target.value)} style={{ ...sel, flex:1, minWidth:'140px' }}>
+                <option value="">All Origins</option>
+                {origins.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', fontWeight:'600', color:RD, cursor:'pointer', whiteSpace:'nowrap' }}>
+                <input type="checkbox" checked={showLow} onChange={e=>setShowLow(e.target.checked)} style={{ accentColor:RD }}/>
+                Low Stock Only
+              </label>
+
+              {anyFilterActive && (
+                <button onClick={()=>{setSearch('');setFilterOrig('');setFilterLoc('ALL');setShowLow(false);}}
+                  style={{ padding:'6px 12px', border:`1px solid ${PL}`, borderRadius:'8px', background:'#F5F3FF', color:P, fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  ✕ Clear
+                </button>
+              )}
+            </div>
+          )}
+
+          {isMobile && (
+            <>
+              <div style={{ display:'flex', gap:'8px', marginBottom: mobileFilterOpen ? '8px' : '12px' }}>
+                <div style={{ flex:1, display:'flex', alignItems:'center', background:'#fff', border:`1.5px solid ${PL}`, borderRadius:'10px', padding:'0 12px' }}>
+                  <span style={{ fontSize:'13px', marginRight:'6px' }}>🔍</span>
+                  <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+                    placeholder={`Search ${cat?.name}...`}
+                    style={{ border:'none', outline:'none', fontSize:'13px', padding:'9px 0', width:'100%', background:'transparent' }}/>
+                </div>
+                <button onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
+                  style={{ width:'42px', flexShrink:0, borderRadius:'10px', border:`1.5px solid ${anyFilterActive?RD:PL}`, background: anyFilterActive ? '#FEF2F2' : '#fff', color: anyFilterActive ? RD : '#6B7280', fontSize:'15px', cursor:'pointer', position:'relative' }}>
+                  ⚙️
+                  {anyFilterActive && <span style={{ position:'absolute', top:'-3px', right:'-3px', width:'9px', height:'9px', borderRadius:'50%', background:RD, border:'1.5px solid #fff' }} />}
+                </button>
+              </div>
+
+              {mobileFilterOpen && (
+                <div style={{ background:'#fff', border:`1.5px solid ${PL}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'12px' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
+                    <span style={{ fontSize:'11px', fontWeight:800, color:P, letterSpacing:'0.4px' }}>FILTERS</span>
+                    <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
+                      {anyFilterActive && (
+                        <button onClick={()=>{setSearch('');setFilterOrig('');setFilterLoc('ALL');setShowLow(false);}}
+                          style={{ border:'none', background:'none', color:RD, fontSize:'12px', fontWeight:700 }}>
+                          Clear
+                        </button>
+                      )}
+                      <button onClick={() => setMobileFilterOpen(false)} style={{ border:'none', background:'none', color:'#9CA3AF', fontSize:'13px' }}>Done</button>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                    <select value={filterLoc} onChange={e=>setFilterLoc(e.target.value)} style={{ ...sel }}>
+                      <option value="ALL">All Locations</option>
+                      {LOCS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
+                    </select>
+                    <select value={filterOrig} onChange={e=>setFilterOrig(e.target.value)} style={{ ...sel }}>
+                      <option value="">All Origins</option>
+                      {origins.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                    <label style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'13px', fontWeight:700, color: showLow ? RD : '#374151', cursor:'pointer', padding:'6px 2px' }}>
+                      <input type="checkbox" checked={showLow} onChange={e=>setShowLow(e.target.checked)} style={{ width:'17px', height:'17px', accentColor:RD }} />
+                      Low Stock Only
+                    </label>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
           {loading ? (
             <div style={{ textAlign:'center', padding:'60px', color:PM, fontWeight:'600' }}>Loading inventory...</div>
           ) : items.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'60px', background:'#fff', borderRadius:'14px', border:`1.5px solid ${PL}` }}>
+            <div style={{ textAlign:'center', padding: isMobile ? '40px 16px' : '60px', background:'#fff', borderRadius:'14px', border:`1.5px solid ${PL}` }}>
               <div style={{ fontSize:'48px', marginBottom:'12px' }}>{cat?.icon}</div>
               <p style={{ fontWeight:'700', color:'#374151', fontSize:'15px' }}>No items found</p>
               <p style={{ fontSize:'12px', color:'#9CA3AF' }}>Click + Add Item to add your first {cat?.name} item</p>
               <button onClick={()=>setAddModal(true)} style={{ marginTop:'14px', padding:'10px 22px', background:`linear-gradient(135deg,${P},${PM})`, color:'#fff', border:'none', borderRadius:'10px', fontSize:'13px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
                 + Add First Item
               </button>
+            </div>
+          ) : isMobile ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+              {items.map((item) => {
+                const cs = getStock(item,'CHEMICAL_STORE');
+                const ml = getStock(item,'MAIN_LAB');
+                const dl = getStock(item,'DET_LAB');
+                const low = isLow(item);
+                const expanded = expandedCard === item.item_id;
+                return (
+                  <div key={item.item_id} style={{ background:'#fff', borderRadius:'14px', overflow:'hidden', boxShadow:'0 1px 4px rgba(107,33,168,0.08)', border:`1px solid ${PL}`, display:'flex' }}>
+                    <div style={{ width:'4px', background: low?RD:GR, flexShrink:0 }} />
+                    <div style={{ flex:1, padding:'12px 14px', minWidth:0 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight:800, fontSize:'14px', color:'#1F2937', lineHeight:1.3 }}>{item.item_name}</div>
+                          <div style={{ fontFamily:'monospace', fontSize:'10.5px', color:PM, fontWeight:700, marginTop:'2px' }}>{item.item_code||'—'}</div>
+                        </div>
+                        {low && <span style={{ background:'#FEE2E2', color:RD, fontSize:'10px', fontWeight:800, padding:'3px 8px', borderRadius:'20px', whiteSpace:'nowrap', flexShrink:0 }}>⚠ LOW</span>}
+                      </div>
+
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px', marginTop:'10px' }}>
+                        {[
+                          { label:'Store', val:cs.quantity, hl:false, onClick:()=>setStockModal({ item, location:'CHEMICAL_STORE', locationLabel:'Chemical Store' }) },
+                          { label:'Main Lab', val:ml.quantity, hl:true, onClick:()=>setStockModal({ item, location:'MAIN_LAB', locationLabel:'Main Lab' }) },
+                          { label:'Det Lab', val:dl.quantity, hl:false, onClick:()=>setStockModal({ item, location:'DET_LAB', locationLabel:'Detergent Lab' }) },
+                        ].map((s,si)=>(
+                          <button key={si} onClick={s.onClick} style={{ background: s.hl ? (low?'#FEF2F2':'#F0FDF4') : '#F9FAFB', border:'none', borderRadius:'9px', padding:'6px 4px', textAlign:'center', cursor:'pointer' }}>
+                            <div style={{ fontSize:'9.5px', color:'#9CA3AF', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{s.label}</div>
+                            <div style={{ fontSize:'16px', fontWeight:800, color: s.hl ? (low?RD:GR) : '#374151', marginTop:'1px' }}>{s.val}</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {hasInUse(activeCat) && (
+                        <div style={{ display:'flex', gap:'10px', marginTop:'7px', fontSize:'10.5px', color:'#6B7280' }}>
+                          <span>Main: <strong style={{ color:'#EA580C' }}>{ml.in_use||0}</strong> in use, <strong style={{ color:GR }}>{ml.in_stock||0}</strong> free</span>
+                        </div>
+                      )}
+
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'9px' }}>
+                        <span style={{ fontSize:'11px', color:'#9CA3AF' }}>Reorder: <strong style={{ color:'#6B7280' }}>{item.reorder_level} {item.unit_of_measurement}</strong></span>
+                        <button onClick={() => setExpandedCard(expanded ? null : item.item_id)}
+                          style={{ border:'none', background:'none', color:PM, fontSize:'11px', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:'3px' }}>
+                          {expanded ? 'Less' : 'Details'} <span style={{ fontSize:'9px', transform: expanded?'rotate(180deg)':'none', display:'inline-block' }}>▾</span>
+                        </button>
+                      </div>
+
+                      {expanded && (
+                        <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px dashed ${PL}`, display:'flex', flexDirection:'column', gap:'6px' }}>
+                          {isChemical(activeCat) && (
+                            <>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Specifications:</strong> {item.specifications||'—'}</div>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Storage:</strong> {item.storage_conditions||'—'}</div>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Restrictions:</strong> {item.restrictions||'—'}</div>
+                            </>
+                          )}
+                          {activeCat==='PH_BUFFER' && (
+                            <>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Brand:</strong> {item.brand_name||'—'}</div>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>pH Range:</strong> {item.ph_range||'—'}</div>
+                            </>
+                          )}
+                          {hasInUse(activeCat) && (
+                            <>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Capacity:</strong> {item.capacity||'—'}</div>
+                              <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Type/Brand:</strong> {item.type_or_brand||'—'}</div>
+                            </>
+                          )}
+                          <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Origin:</strong> {item.country_of_origin||'—'}</div>
+                          <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Expiry:</strong> {item.expiry_date||'—'}</div>
+                          {item.comments && <div style={{ fontSize:'11.5px', color:'#6B7280' }}><strong style={{ color:'#374151' }}>Comments:</strong> {item.comments}</div>}
+                          <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
+                            <button onClick={() => setEditItem(item)} style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:PL, color:P, fontSize:'12px', fontWeight:700 }}>✏️ Edit</button>
+                            <button onClick={() => setBreakModal({ item_id:item.item_id, item_name:item.item_name, unit:item.unit_of_measurement })} style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:'#FEF2F2', color:RD, fontSize:'12px', fontWeight:700 }}>💔 Breakage</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
+                <button onClick={exportExcel} disabled={items.length===0} style={{ flex:1, padding:'10px', background:'linear-gradient(135deg,#16A34A,#15803D)', color:'#fff', border:'none', borderRadius:'10px', fontSize:'12px', fontWeight:'700' }}>📊 Excel</button>
+                <button onClick={exportPDF} disabled={items.length===0} style={{ flex:1, padding:'10px', background:'linear-gradient(135deg,#DC2626,#B91C1C)', color:'#fff', border:'none', borderRadius:'10px', fontSize:'12px', fontWeight:'700' }}>📄 PDF</button>
+              </div>
             </div>
           ) : (
             <div style={{ background:'#fff', borderRadius:'14px', border:`1.5px solid ${PL}`, overflow:'hidden', boxShadow:'0 2px 8px rgba(107,33,168,0.06)' }}>
@@ -394,27 +564,27 @@ export default function InventoryPage() {
                   <thead>
                     <tr>
                       {[
-  'Item Name','Code',
-  ...(isChemical(activeCat)?['Specifications','Storage','Restrictions']:cat?.code==='PH_BUFFER'?['Brand','pH Range','Storage']:['Capacity','Type/Brand']),
-  'Unit','Origin','Expiry','Reorder Lvl',
-  'Chemical Store','Main Lab','Det Lab',
-  ...(hasInUse(activeCat)?['ML In-Use','ML In-Stock','DL In-Use','DL In-Stock']:[]),
-  'Comments','Actions',
-].map((h, hi) => (
-  <th key={h} style={{
-    position:'sticky', top:0,
-    left: hi===0 ? 0 : undefined,
-    background:`linear-gradient(180deg,${P},#5B1894)`,
-    color: ['Chemical Store','Reorder Lvl'].includes(h)?G:'#fff',
-    padding:'9px 10px', textAlign:'left', fontSize:'11px', fontWeight:'800',
-    whiteSpace:'nowrap', borderBottom:'2px solid rgba(255,255,255,0.2)',
-    borderRight:'1px solid rgba(255,255,255,0.15)',
-    zIndex: hi===0 ? 60 : 50,
-    boxShadow: hi===0 ? '2px 0 4px rgba(0,0,0,0.15)' : 'none',
-  }}>
-    {h}
-  </th>
-))}
+                        'Item Name','Code',
+                        ...(isChemical(activeCat)?['Specifications','Storage','Restrictions']:cat?.code==='PH_BUFFER'?['Brand','pH Range','Storage']:['Capacity','Type/Brand']),
+                        'Unit','Origin','Expiry','Reorder Lvl',
+                        'Chemical Store','Main Lab','Det Lab',
+                        ...(hasInUse(activeCat)?['ML In-Use','ML In-Stock','DL In-Use','DL In-Stock']:[]),
+                        'Comments','Actions',
+                      ].map((h, hi) => (
+                        <th key={h} style={{
+                          position:'sticky', top:0,
+                          left: hi===0 ? 0 : undefined,
+                          background:`linear-gradient(180deg,${P},#5B1894)`,
+                          color: ['Chemical Store','Reorder Lvl'].includes(h)?G:'#fff',
+                          padding:'9px 10px', textAlign:'left', fontSize:'11px', fontWeight:'800',
+                          whiteSpace:'nowrap', borderBottom:'2px solid rgba(255,255,255,0.2)',
+                          borderRight:'1px solid rgba(255,255,255,0.15)',
+                          zIndex: hi===0 ? 60 : 50,
+                          boxShadow: hi===0 ? '2px 0 4px rgba(0,0,0,0.15)' : 'none',
+                        }}>
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -435,19 +605,18 @@ export default function InventoryPage() {
                           onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
                           onMouseLeave={e=>e.currentTarget.style.filter='none'}
                         >
-                          {/* Item name — sticky/frozen while scrolling horizontally */}
-<td style={{
-  position:'sticky', left:0,
-  padding:'9px 10px', borderBottom:'1px solid #EDE9FE',
-  background:even?'#F5F3FF':'#fff',
-  fontWeight:'700', color:'#1F2937', whiteSpace:'nowrap',
-  borderRight:'1px solid #EDE9FE',
-  zIndex:40,
-  boxShadow:'2px 0 4px rgba(0,0,0,0.08)',
-}}>
-  {low && <span style={{ fontSize:'10px', color:RD, fontWeight:'800', display:'block', marginBottom:'2px' }}>⚠️ LOW STOCK</span>}
-  {item.item_name}
-</td>
+                          <td style={{
+                            position:'sticky', left:0,
+                            padding:'9px 10px', borderBottom:'1px solid #EDE9FE',
+                            background:even?'#F5F3FF':'#fff',
+                            fontWeight:'700', color:'#1F2937', whiteSpace:'nowrap',
+                            borderRight:'1px solid #EDE9FE',
+                            zIndex:40,
+                            boxShadow:'2px 0 4px rgba(0,0,0,0.08)',
+                          }}>
+                            {low && <span style={{ fontSize:'10px', color:RD, fontWeight:'800', display:'block', marginBottom:'2px' }}>⚠️ LOW STOCK</span>}
+                            {item.item_name}
+                          </td>
                           {td(<span style={{ fontFamily:'monospace', fontSize:'11px', color:PM, fontWeight:'700' }}>{item.item_code||'—'}</span>)}
 
                           {isChemical(activeCat) && <>
@@ -474,7 +643,6 @@ export default function InventoryPage() {
                           ) : '—')}
                           {td(<span style={{ fontWeight:'700', color: low?RD:'#374151' }}>{item.reorder_level}</span>)}
 
-                          {/* Stock cells */}
                           {[cs,ml,dl].map((s,si) => (
                             <td key={si} style={{ padding:'9px 10px', borderBottom:'1px solid #EDE9FE', borderRight:'1px solid #F5F3FF', background:even?'#FAFAFA':'#fff', textAlign:'center', verticalAlign:'top' }}>
                               <div style={{ fontWeight:'900', fontSize:'15px', color: si===1&&low ? RD : s.quantity===0 ? '#9CA3AF' : '#1F2937' }}>
@@ -497,7 +665,6 @@ export default function InventoryPage() {
 
                           {td(<span style={{ maxWidth:'120px', display:'block', whiteSpace:'normal', fontSize:'11px', color:'#6B7280' }}>{item.comments||'—'}</span>, {style:{whiteSpace:'normal'}})}
 
-                          {/* Actions */}
                           <td style={{ padding:'8px 10px', borderBottom:'1px solid #EDE9FE', background:even?'#FAFAFA':'#fff', whiteSpace:'nowrap' }}>
                             <div style={{ display:'flex', gap:'4px' }}>
                               <button onClick={() => setEditItem(item)}
@@ -522,10 +689,50 @@ export default function InventoryPage() {
               </div>
             </div>
           )}
+
         </div>
       </div>
 
-      {/* ── ADD / EDIT ITEM MODAL ── */}
+      {isMobile && (
+        <button onClick={() => setMobileSheetOpen(true)}
+          style={{ position:'fixed', bottom:'24px', right:'20px', width:'56px', height:'56px', borderRadius:'50%', background:`linear-gradient(135deg,${P},${PM})`, border:'none', color:'#fff', fontSize:'26px', boxShadow:'0 6px 20px rgba(107,33,168,0.4)', cursor:'pointer', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          +
+        </button>
+      )}
+
+      {isMobile && mobileSheetOpen && (
+        <div onClick={() => setMobileSheetOpen(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:550, display:'flex', alignItems:'flex-end' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:'20px 20px 0 0', width:'100%', padding:'10px 16px 28px' }}>
+            <div style={{ width:'36px', height:'4px', background:'#E5E7EB', borderRadius:'10px', margin:'4px auto 14px' }} />
+            <div style={{ fontWeight:800, fontSize:'14px', color:'#1F2937', marginBottom:'12px' }}>Quick Actions</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
+              <button onClick={() => { setMobileSheetOpen(false); setReqModal(true); }}
+                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'13px 12px', borderRadius:'12px', border:'none', background:PM, color:'#fff', fontSize:'13px', fontWeight:700 }}>
+                <span style={{ fontSize:'17px' }}>📋</span>Requisition
+              </button>
+              <button onClick={() => { setMobileSheetOpen(false); setTransferModal(true); }}
+                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'13px 12px', borderRadius:'12px', border:'none', background:'#EA580C14', color:'#EA580C', fontSize:'13px', fontWeight:700 }}>
+                <span style={{ fontSize:'17px' }}>🔄</span>Transfer
+              </button>
+              <button onClick={() => { setMobileSheetOpen(false); setUsageModal(true); }}
+                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'13px 12px', borderRadius:'12px', border:'none', background:'#0369A114', color:'#0369A1', fontSize:'13px', fontWeight:700 }}>
+                <span style={{ fontSize:'17px' }}>🔬</span>Usage
+              </button>
+              <button onClick={() => { setMobileSheetOpen(false); setBreakModal({}); }}
+                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'13px 12px', borderRadius:'12px', border:'none', background:'#FEF2F2', color:RD, fontSize:'13px', fontWeight:700 }}>
+                <span style={{ fontSize:'17px' }}>💔</span>Breakage
+              </button>
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={() => { setMobileSheetOpen(false); setTxnModal(true); }}
+                style={{ flex:1, padding:'11px', borderRadius:'10px', border:`1px solid ${PL}`, background:'#F9FAFB', color:'#374151', fontSize:'12.5px', fontWeight:700 }}>📜 Transaction Log</button>
+              <button onClick={() => { setMobileSheetOpen(false); setBalanceSheet(true); }}
+                style={{ flex:1, padding:'11px', borderRadius:'10px', border:`1px solid ${PL}`, background:'#F5F3FF', color:P, fontSize:'12.5px', fontWeight:700 }}>📊 Balance Sheet</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(addModal || editItem) && (
         <ItemModal
           item={editItem}
@@ -542,14 +749,13 @@ export default function InventoryPage() {
                 const catRes = await supabase.from('inventory_categories').select('id').eq('code',activeCat).single();
                 const { qty_chemical_store, qty_main_lab, qty_det_lab, ...itemData } = data;
 
-const res = await api.post('/inventory/items', {
-  ...itemData,
-  category_id: catRes.data?.id,
-});
+                const res = await api.post('/inventory/items', {
+                  ...itemData,
+                  category_id: catRes.data?.id,
+                });
 
-const newItem = res.data?.item;
+                const newItem = res.data?.item;
 
-                // Set initial quantities if provided
                 const locs = [
                   { loc:'CHEMICAL_STORE', qty: parseFloat(data.qty_chemical_store||0) },
                   { loc:'MAIN_LAB',       qty: parseFloat(data.qty_main_lab||0) },
@@ -558,7 +764,7 @@ const newItem = res.data?.item;
                 for (const { loc, qty } of locs) {
                   if (qty > 0 && newItem?.id) {
                     await supabase.from('inventory_stock').upsert({
-                      item_id    : newItem.item_id,
+                      item_id    : newItem.id,
                       location   : loc,
                       quantity   : qty,
                       in_stock   : qty,
@@ -577,7 +783,6 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── STOCK UPDATE MODAL ── */}
       {stockModal && (
         <StockModal
           data={stockModal}
@@ -599,7 +804,6 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── BREAKAGE MODAL ── */}
       {breakModal && (
         <BreakageModal
           item={breakModal}
@@ -616,7 +820,6 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── REQUISITION MODAL ── */}
       {reqModal && (
         <RequisitionModal
           onClose={() => setReqModal(false)}
@@ -625,7 +828,6 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── TRANSFER MODAL ── */}
       {transferModal && (
         <TransferModal
           onClose={() => setTransferModal(false)}
@@ -634,7 +836,6 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── USAGE MODAL ── */}
       {usageModal && (
         <UsageModal
           onClose={() => setUsageModal(false)}
@@ -643,7 +844,10 @@ const newItem = res.data?.item;
         />
       )}
 
-      {/* ── BALANCE SHEET ── */}
+      {txnModal && (
+        <TransactionModal onClose={() => setTxnModal(false)} />
+      )}
+
       {balanceSheet && (
         <StockBalanceSheet onClose={() => setBalanceSheet(false)} />
       )}
@@ -661,7 +865,6 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
     specifications:'', storage_conditions:'', restrictions:'',
     usage_description:'', brand_name:'', ph_range:'',
     capacity:'', type_or_brand:'',
-    // Initial quantities per location
     qty_chemical_store: 0,
     qty_main_lab      : 0,
     qty_det_lab       : 0,
@@ -705,7 +908,6 @@ function ItemModal({ item, catCode, catName, onClose, onSave }) {
             <div style={fld2}><label style={lbl2}>Reorder Level (Chemical Store)</label><input type="number" value={form.reorder_level||0} onChange={e=>set('reorder_level',e.target.value)} style={inp2}/></div>
             <div style={fld2}><label style={lbl2}>Expiry Date</label><input type="date" value={form.expiry_date||''} onChange={e=>set('expiry_date',e.target.value)} style={inp2}/></div>
 
-            {/* ── Initial Stock Quantities ── */}
             {!item && (
               <div style={{ gridColumn:'1/3', background:'#F5F3FF', borderRadius:'12px', padding:'14px', border:`1.5px solid #EDE9FE`, marginBottom:'4px' }}>
                 <div style={{ fontSize:'12px', fontWeight:'800', color:'#4C1D95', marginBottom:'10px' }}>
