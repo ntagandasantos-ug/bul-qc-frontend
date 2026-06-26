@@ -352,6 +352,7 @@ export default function SampleRegistrationPage() {
       return true;
     });
   };
+  console.log('DEBUG bulkSamples:', JSON.stringify(bulkSamples.map(s => ({ id:s.id, catId:s.catId, typeId:s.typeId, needsSub:s.needsSub, typesCount:(s.types||[]).length, subtypesCount:(s.subtypes||[]).length }))));
 
   return (
     <div style={{ minHeight:'100vh', background:'#FAF5FF', paddingBottom:'60px' }}>
