@@ -735,10 +735,7 @@ export default function InventoryPage() {
 
       {(addModal || editItem) && (
         <ItemModal
-          item={editItem ? {
-            ...editItem,
-            unit_of_measurement: editItem.unit_of_measurement || editItem.unit || '',
-          } : null}
+          item={editItem ? { ...editItem, unit_of_measurement: editItem.unit_of_measurement || editItem.unit || '' } : null }
           catCode={activeCat}
           catName={cat?.name}
           onClose={() => { setAddModal(false); setEditItem(null); }}
