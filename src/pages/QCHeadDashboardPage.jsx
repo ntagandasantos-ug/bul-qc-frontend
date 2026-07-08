@@ -28,6 +28,7 @@ const DEPT_CONFIG = {
   REF  :{ name:'Refinery',          icon:'🏭', color:'#0369A1', light:'#E0F2FE', route:'/dashboard/ref'  },
   FP   :{ name:'Filling & Packing', icon:'🛢️', color:'#7C2D12', light:'#FFF7ED', route:'/dashboard/fp'   },
   SOAP :{ name:'Soap',              icon:'🧼', color:'#059669', light:'#ECFDF5', route:'/dashboard/soap' },
+  BOILER:{ name:'Boiler',            icon:'🔥', color:'#B45309', light:'#FFFAEB', route:'/dashboard/boiler' },
 };
 
 export default function QCHeadDashboardPage() {
