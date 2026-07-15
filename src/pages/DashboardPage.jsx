@@ -175,18 +175,18 @@ export default function DashboardPage() {
     total   : samples.length,
   }), [samples]);
 
-  const th = (label, col) => (
-    <th onClick={()=>{ setSortCol(col); setSortDir(p=>sortCol===col&&p==='asc'?'desc':'asc'); setPage(1); }}
-      style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', cursor:'pointer', whiteSpace:'nowrap', userSelect:'none', position:'sticky', top:0, zIndex:10 }}>
-      {label} {sortCol===col&&(sortDir==='asc'?'↑':'↓')}
-    </th>
-  );
+  const th = (label, col, isFirst=false) => (
+  <th onClick={()=>{ setSortCol(col); setSortDir(p=>sortCol===col&&p==='asc'?'desc':'asc'); setPage(1); }}
+    style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', cursor:'pointer', whiteSpace:'nowrap', userSelect:'none', position:'sticky', top:0, zIndex: isFirst ? 20 : 10, left: isFirst ? 0 : undefined, boxShadow: isFirst ? '2px 0 4px rgba(0,0,0,0.06)' : 'none' }}>
+    {label} {sortCol===col&&(sortDir==='asc'?'↑':'↓')}
+  </th>
+);
 
   const inp = { border:'1.5px solid #E2E8F0', borderRadius:'8px', padding:'7px 11px', fontSize:'13px', fontFamily:'inherit', background:'#fff', color:'#1E293B', outline:'none' };
   const selStyle = { ...inp, cursor:'pointer', paddingRight:'28px', appearance:'none', backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat:'no-repeat', backgroundPosition:'right 8px center' };
 
   return (
-    <div style={{ minHeight:'100vh', background:SL, display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'100vh', background:SL, display:'flex', flexDirection:'column', paddingBottom: window.innerWidth <= 1024 ? '80px' : '0' }}>
       <Navbar/>
 
       {isSupervisor && <SupervisorNotifications/>}
@@ -305,7 +305,7 @@ export default function DashboardPage() {
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
                 <thead>
                   <tr>
-                    {th('Sample Name',  'sample_name')}
+                    {th('Sample Name', 'sample_name', true)}
                     {th('Number',       'sample_number')}
                     {/* Type column removed */}
                     <th style={{ padding:'9px 12px', textAlign:'left', fontSize:'11px', fontWeight:'700', color:'#64748B', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap', position:'sticky', top:0 }}>Department</th>
@@ -334,15 +334,15 @@ export default function DashboardPage() {
                         onMouseEnter={e=>e.currentTarget.style.background='#F5F3FF'}
                         onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#FAFBFC'}>
 
-                        {/* Sample name */}
-                        <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', maxWidth:'220px' }}>
-                          <div style={{ fontWeight:'700', color:'#0F172A', fontSize:'13px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }} title={s.sample_name}>
-                            {s.sample_name}
-                          </div>
-                          {s.batch_number && (
-                            <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'1px' }}>Batch: {s.batch_number}</div>
-                          )}
-                        </td>
+                        {/* Sample name — sticky left column */}
+<td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', maxWidth:'220px', position:'sticky', left:0, zIndex:5, background: i%2===0 ? '#fff' : '#FAFBFC', boxShadow:'2px 0 4px rgba(0,0,0,0.06)' }}>
+  <div style={{ fontWeight:'700', color:'#0F172A', fontSize:'13px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }} title={s.sample_name}>
+    {s.sample_name}
+  </div>
+  {s.batch_number && (
+    <div style={{ fontSize:'10px', color:'#94A3B8', marginTop:'1px' }}>Batch: {s.batch_number}</div>
+  )}
+</td>
 
                         {/* Number */}
                         <td style={{ padding:'10px 12px', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>
