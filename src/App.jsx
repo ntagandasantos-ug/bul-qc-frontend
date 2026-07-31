@@ -1,3 +1,4 @@
+import MaintenancePage from './pages/MaintenancePage';
 import React        from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -39,7 +40,14 @@ function RoleBasedDashboard() {
   return <DashboardPage />;
 }
 
-export default function App() {
+export default function App() {// ────────────────────────────────────────────────
+  // MAINTENANCE MODE
+  // ────────────────────────────────────────────────
+  const isMaintenanceMode = process.env.REACT_APP_MAINTENANCE_MODE === 'true';
+
+  if (isMaintenanceMode) {
+    return <MaintenancePage />;
+  }
   return (
     <AuthProvider>
       <BrowserRouter>
